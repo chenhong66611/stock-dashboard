@@ -102,7 +102,14 @@ export function formatTime(t) {
  */
 export async function fetchAllIndices() {
   const codes = ALL_LIST.map(i => i.code).join(',')
-  const url = `/api/stock/q=${codes}`
+
+  // 生产环境（GitHub Pages）走 Cloudflare Worker，开发环境走 Vite 代理
+  // 部署时需设置 VITE_API_BASE 环境变量为你的 Worker URL
+  const API_BASE = import.meta.env.DEV
+    ? '/api/stock'
+    : (import.meta.env.VITE_API_BASE || '/api/stock')
+
+  const url = `${API_BASE}/q=${codes}`
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`请求失败 (${resp.status})`)
   const text = await resp.text()
