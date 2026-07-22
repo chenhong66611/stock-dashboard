@@ -47,7 +47,7 @@
 
     <!-- 网格计划 -->
     <div class="grid-wrap">
-      <div class="grid-title">📊 支付宝策略 · 网格计划</div>
+      <div class="grid-title">📊 证券网格 · ETF 策略</div>
       <div class="grid-body">
         <!-- 卖出目标 -->
         <div class="grid-row sell" :class="{ active: atSell }">
@@ -177,8 +177,8 @@ const bannerIcon = computed(() => {
 
 const bannerText = computed(() => {
   if (!cfg.value || !price.value) return '加载中...'
-  if (atSell.value) return '建议：支付宝赎回全部份额！'
-  if (atBuy1.value) return '建议：买入① 100元（支付宝搜XXX联接）'
+  if (atSell.value) return '建议：全部卖出 🏆'
+  if (atBuy1.value) return '建议：买入① 100元（万联证券）'
   if (atBuy2.value) return '建议：买入② 100元（注意冷却期≥7天）'
   if (atBuy3.value) return '建议：买入③ 100元（极端机会！）'
   if (cfg.value && price.value < cfg.value.buy1 && price.value > cfg.value.buy1 * 0.95) return '接近买入①，盯紧！'
