@@ -7,11 +7,13 @@
 export const INDEX_LIST = [
   { code: 'sh510300', name: '沪深300ETF', shortName: '沪深300ETF' },
   { code: 'sh588000', name: '华夏科创50ETF', shortName: '科创50ETF' },
+  { code: 'sh560010', name: '中证1000ETF', shortName: '中证1000' },
 ]
 
 // 参考指数（卡片下方显示）
 export const REF_LIST = [
   { code: 'sh000688', name: '科创50指数', shortName: '科创50', ref: true },
+  { code: 'sh000852', name: '中证1000指数', shortName: '中证1000', ref: true },
 ]
 
 // 合并列表

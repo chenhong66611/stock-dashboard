@@ -131,6 +131,13 @@ const GRID = {
     cooldown: '7天',
     targetGain: '+9%~+15%',
   },
+  sh560010: {
+    sell1: 3.30,
+    buy1: 2.78, buy2: 2.62, buy3: 2.46,
+    amount1: '100元', amount2: '100元', amount3: '100元',
+    cooldown: '7天',
+    targetGain: '+11%',
+  },
 }
 
 const cfg = computed(() => GRID[props.data.code] || null)
