@@ -126,10 +126,10 @@ const GRID = {
   },
   sh588000: {
     sell1: 2.02,
-    buy1: 1.85, buy2: 1.75, buy3: 1.65,
+    buy1: 1.76, buy2: 1.65, buy3: 1.55,
     amount1: '100元', amount2: '100元', amount3: '100元',
     cooldown: '7天',
-    targetGain: '+9%~+15%',
+    targetGain: '+15%',
   },
   sh560010: {
     sell1: 3.30,
