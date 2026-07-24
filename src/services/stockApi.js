@@ -5,7 +5,7 @@
 
 // 自选ETF定义
 export const INDEX_LIST = [
-  { code: 'sh510300', name: '沪深300ETF', shortName: '沪深300ETF' },
+  { code: 'sh510310', name: '易方达沪深300ETF', shortName: '沪深300ETF' },
   { code: 'sh588000', name: '华夏科创50ETF', shortName: '科创50ETF' },
   { code: 'sh560010', name: '中证1000ETF', shortName: '中证1000' },
 ]

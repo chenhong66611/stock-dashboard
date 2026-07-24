@@ -4,7 +4,7 @@
     <header class="header">
       <div class="header-left">
         <h1>ETF 盯盘</h1>
-        <div class="subtitle">沪深300ETF · 科创50ETF</div>
+        <div class="subtitle">中证1000ETF · 沪深300ETF</div>
       </div>
       <div class="header-right">
         <div class="market-status">
@@ -114,8 +114,9 @@ const timer = ref(null)
 
 // 持仓金额（按ETF代码索引，买入后手动更新）
 const holdings = reactive({
-  sh510300: 0,
+  sh510310: 0,
   sh588000: 0,
+  sh560010: 0,
 })
 
 // 分离 ETF 和参考指数

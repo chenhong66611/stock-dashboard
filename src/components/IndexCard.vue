@@ -72,7 +72,7 @@
           <span class="grid-label">🟢 买入② {{ grid.amt2 }}</span>
           <span class="grid-price">{{ grid.b2 }}</span>
         </div>
-        <div class="grid-row buy" :class="{ active: atBuy3 }">
+        <div class="grid-row buy" :class="{ active: atBuy3 }" v-if="grid.amt3">
           <span class="grid-dot"></span>
           <span class="grid-label">🟢 买入③ {{ grid.amt3 }}</span>
           <span class="grid-price">{{ grid.b3 }}</span>
@@ -117,10 +117,10 @@ const props = defineProps({
 
 // 每只ETF的网格计划
 const GRID = {
-  sh510300: {
-    sell1: 4.99,
-    buy1: 4.54, buy2: 4.35, buy3: 4.15,
-    amount1: '100元', amount2: '100元', amount3: '100元',
+  sh510310: {
+    sell1: 4.85,
+    buy1: 4.43, buy2: 4.34, buy3: 4.26,
+    amount1: '150元', amount2: '150元', amount3: '100元',
     cooldown: '7天',
     targetGain: '+10%',
   },
@@ -133,10 +133,10 @@ const GRID = {
   },
   sh560010: {
     sell1: 3.10,
-    buy1: 2.88, buy2: 2.75, buy3: 2.62,
-    amount1: '100元', amount2: '100元', amount3: '100元',
+    buy1: 2.88, buy2: 2.78, buy3: null,
+    amount1: '250元', amount2: '250元', amount3: '',
     cooldown: '7天',
-    targetGain: '+11%',
+    targetGain: '+10%',
   },
 }
 
@@ -153,7 +153,7 @@ const grid = computed(() => {
     s1: g.sell1.toFixed(2),
     b1: g.buy1.toFixed(2),
     b2: g.buy2.toFixed(2),
-    b3: g.buy3.toFixed(2),
+    b3: g.buy3 != null ? g.buy3.toFixed(2) : '--',
     amt1: g.amount1, amt2: g.amount2, amt3: g.amount3,
     cooldown: g.cooldown,
     gain: g.targetGain,
@@ -163,8 +163,8 @@ const grid = computed(() => {
 // 当前价触达了哪个档位
 const atSell = computed(() => cfg.value && price.value >= cfg.value.sell1)
 const atBuy1 = computed(() => cfg.value && price.value <= cfg.value.buy1 && price.value > cfg.value.buy2)
-const atBuy2 = computed(() => cfg.value && price.value <= cfg.value.buy2 && price.value > cfg.value.buy3)
-const atBuy3 = computed(() => cfg.value && price.value <= cfg.value.buy3)
+const atBuy2 = computed(() => cfg.value && price.value <= cfg.value.buy2 && cfg.value.buy3 != null && price.value > cfg.value.buy3)
+const atBuy3 = computed(() => cfg.value && cfg.value.buy3 != null && price.value <= cfg.value.buy3)
 
 const bannerClass = computed(() => {
   if (!cfg.value || !price.value) return ''
@@ -185,9 +185,9 @@ const bannerIcon = computed(() => {
 const bannerText = computed(() => {
   if (!cfg.value || !price.value) return '加载中...'
   if (atSell.value) return '建议：全部卖出 🏆'
-  if (atBuy1.value) return '建议：买入① 100元（万联证券）'
-  if (atBuy2.value) return '建议：买入② 100元（注意冷却期≥7天）'
-  if (atBuy3.value) return '建议：买入③ 100元（极端机会！）'
+  if (atBuy1.value) return `建议：买入① ${cfg.value.amount1}（万联证券）`
+  if (atBuy2.value) return `建议：买入② ${cfg.value.amount2}（注意冷却期≥7天）`
+  if (atBuy3.value) return `建议：买入③ ${cfg.value.amount3}（极端机会！）`
   if (cfg.value && price.value < cfg.value.buy1 && price.value > cfg.value.buy1 * 0.95) return '接近买入①，盯紧！'
   return '等待回调，不到不动'
 })
