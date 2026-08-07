@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>.</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:#1a1a1a;
+  color:#888;
+  font-family:system-ui,-apple-system,'Segoe UI',monospace;
+  font-size:11px;
+  width:180px;
+  overflow:hidden;
+  user-select:none;
+  cursor:default;
+}
+.item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:3px 6px;
+  border-bottom:1px solid #222;
+}
+.item:last-child{border-bottom:none}
+.name{color:#666;width:32px}
+.price{font-variant-numeric:tabular-nums;font-weight:500;width:44px;text-align:right;color:#aaa}
+.chg{width:40px;text-align:right;font-variant-numeric:tabular-nums;font-size:10px}
+.up{color:#4ade80}
+.down{color:#f87171}
+.flat{color:#666}
+.label{color:#444;font-size:9px;padding:2px 6px;background:#141414;display:flex;justify-content:space-between}
+.t{color:#444;font-size:9px}
+.ok{color:#4ade80;font-size:9px}
+</style>
+</head>
+<body>
+<div class="label"><span>实时</span><span class="t" id="t">--</span></div>
+<div class="item"><span class="name">1000</span><span class="price" id="p1">--</span><span class="chg" id="c1">--</span></div>
+<div class="item"><span class="name">科创</span><span class="price" id="p2">--</span><span class="chg" id="c2">--</span></div>
+<div class="label"><span class="ok">●</span><span id="msg">运行中</span></div>
+<script>
+const CODES = ['sh560010','sh588000']
+async function fetchPrices(){
+  try{
+    const r=await fetch('https://qt.gtimg.cn/q='+CODES.join(','))
+    const t=await r.text()
+    const lines=t.trim().split('\n')
+    const results=[]
+    for(const l of lines){
+      const m=l.match(/^v_(\w+)="(.+)";?$/)
+      if(!m)continue
+      const f=m[2].split('~')
+      const price=parseFloat(f[3])||0
+      const prev=parseFloat(f[4])||0
+      const chg=price-prev
+      const pct=prev>0?(chg/prev*100):0
+      results.push({code:m[1],price,chg,pct})
+    }
+    return results
+  }catch(e){return null}
+}
+function updateTime(){
+  const n=new Date()
+  document.getElementById('t').textContent=
+    String(n.getHours()).padStart(2,'0')+':'+
+    String(n.getMinutes()).padStart(2,'0')+':'+
+    String(n.getSeconds()).padStart(2,'0')
+}
+async function update(){
+  const data=await fetchPrices()
+  updateTime()
+  if(!data){
+    document.getElementById('msg').textContent='连接失败'
+    return
+  }
+  document.getElementById('msg').textContent='● 运行中'
+  const map={}
+  for(const d of data)map[d.code]=d
+
+  const p1=document.getElementById('p1'),c1=document.getElementById('c1')
+  const p2=document.getElementById('p2'),c2=document.getElementById('c2')
+
+  // 560010
+  if(map['sh560010']){
+    const d=map['sh560010']
+    p1.textContent=d.price.toFixed(2)
+    c1.textContent=(d.chg>0?'+':'')+d.chg.toFixed(2)
+    c1.className='chg '+(d.chg>0?'up':d.chg<0?'down':'flat')
+  }
+  // 588000
+  if(map['sh588000']){
+    const d=map['sh588000']
+    p2.textContent=d.price.toFixed(2)
+    c2.textContent=(d.chg>0?'+':'')+d.chg.toFixed(2)
+    c2.className='chg '+(d.chg>0?'up':d.chg<0?'down':'flat')
+  }
+}
+update()
+setInterval(update,10000)
+</script>
+</body>
+</html>

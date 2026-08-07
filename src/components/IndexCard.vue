@@ -47,13 +47,13 @@
 
     <!-- 网格计划 -->
     <div class="grid-wrap">
-      <div class="grid-title">📊 证券网格 · ETF 策略</div>
+      <div class="grid-title">{{ isWatch ? '👀 参考观察' : '📊 正式网格' }}</div>
       <div class="grid-body">
         <!-- 卖出目标 -->
         <div class="grid-row sell" :class="{ active: atSell }">
           <span class="grid-dot"></span>
           <span class="grid-label">🔴 目标卖出 ({{ grid.gain }})</span>
-          <span class="grid-price">{{ grid.s1 }}</span>
+          <span class="grid-price">{{ grid.s1 }}<template v-if="grid.s2 != '--'"> / {{ grid.s2 }}</template></span>
         </div>
         <!-- 当前价 -->
         <div class="grid-row current">
@@ -80,6 +80,7 @@
         <!-- 规则提示 -->
         <div class="grid-rule">
           ⏱ 每档买入后冷却 {{ grid.cooldown }} 再考虑下一档
+          <template v-if="grid.note"> · {{ grid.note }}</template>
         </div>
       </div>
     </div>
@@ -115,28 +116,74 @@ const props = defineProps({
   holding: { type: Number, default: 0 },
 })
 
-// 每只ETF的网格计划
+// 每只ETF的网格计划（8/7 定稿，基于历史K线数据）
 const GRID = {
+  // ===== 正式网格 =====
   sh510310: {
-    sell1: 4.85,
-    buy1: 4.43, buy2: 4.34, buy3: 4.26,
-    amount1: '150元', amount2: '150元', amount3: '100元',
-    cooldown: '7天',
+    sell1: 4.90,
+    buy1: 4.45, buy2: 4.30, buy3: null,
+    amount1: '100份', amount2: '100份', amount3: '',
+    cooldown: '3天',
     targetGain: '+10%',
+    note: '压舱石，波动最小',
   },
   sh588000: {
     sell1: 2.02,
+    sell2: 2.20,
     buy1: 1.76, buy2: 1.65, buy3: 1.55,
-    amount1: '100元', amount2: '100元', amount3: '100元',
-    cooldown: '7天',
-    targetGain: '+15%',
+    amount1: '200份', amount2: '200份', amount3: '200份',
+    cooldown: '3天',
+    targetGain: '+15%~+25%',
+    note: '分批卖：2.02卖75%，2.20卖25%',
   },
   sh560010: {
     sell1: 3.10,
-    buy1: 2.88, buy2: 2.78, buy3: null,
-    amount1: '250元', amount2: '250元', amount3: '',
-    cooldown: '7天',
-    targetGain: '+10%',
+    buy1: 2.88, buy2: 2.75, buy3: 2.62,
+    amount1: '100份', amount2: '100份', amount3: '100份',
+    cooldown: '3天',
+    targetGain: '+8%',
+    note: '已走完一轮（2.88→3.10）',
+  },
+  // ===== 参考观察（额外资金） =====
+  sz159755: {
+    sell1: 1.10,
+    buy1: 0.94, buy2: 0.85, buy3: 0.70,
+    amount1: '100份', amount2: '100份', amount3: '100份',
+    cooldown: '3天',
+    targetGain: '+17%',
+    note: '电池：出清尾声，离触发最近',
+  },
+  sh515790: {
+    sell1: 1.00,
+    buy1: 0.82, buy2: 0.78, buy3: 0.70,
+    amount1: '100份', amount2: '100份', amount3: '100份',
+    cooldown: '3天',
+    targetGain: '+22%',
+    note: '光伏：美国封锁出尽',
+  },
+  sz159869: {
+    sell1: 1.25,
+    buy1: 1.05, buy2: 1.00, buy3: null,
+    amount1: '100份', amount2: '100份', amount3: '',
+    cooldown: '3天',
+    targetGain: '+19%',
+    note: '游戏：版号破千+出海',
+  },
+  sh512980: {
+    sell1: 0.97,
+    buy1: 0.78, buy2: 0.74, buy3: null,
+    amount1: '100份', amount2: '100份', amount3: '',
+    cooldown: '3天',
+    targetGain: '+24%',
+    note: '传媒：与游戏同板块',
+  },
+  sh512480: {
+    sell1: 1.00,
+    buy1: 0.79, buy2: null, buy3: null,
+    amount1: '记号', amount2: '', amount3: '',
+    cooldown: '3天',
+    targetGain: '+27%',
+    note: '半导体：只看不买，等企稳',
   },
 }
 
@@ -148,22 +195,27 @@ const isDown = computed(() => props.data.change < 0)
 // 网格各档位价格
 const grid = computed(() => {
   const g = cfg.value
-  if (!g) return { s1:'--', b1:'--', b2:'--', b3:'--', amt1:'', amt2:'', amt3:'', cooldown:'', gain:'' }
+  if (!g) return { s1:'--', s2:'--', b1:'--', b2:'--', b3:'--', amt1:'', amt2:'', amt3:'', cooldown:'', gain:'' }
   return {
     s1: g.sell1.toFixed(2),
+    s2: g.sell2 != null ? g.sell2.toFixed(2) : '--',
     b1: g.buy1.toFixed(2),
-    b2: g.buy2.toFixed(2),
+    b2: g.buy2 != null ? g.buy2.toFixed(2) : '--',
     b3: g.buy3 != null ? g.buy3.toFixed(2) : '--',
     amt1: g.amount1, amt2: g.amount2, amt3: g.amount3,
     cooldown: g.cooldown,
     gain: g.targetGain,
+    note: g.note || '',
   }
 })
 
+// 是否为参考观察标的
+const isWatch = computed(() => props.data.watch || false)
+
 // 当前价触达了哪个档位
 const atSell = computed(() => cfg.value && price.value >= cfg.value.sell1)
-const atBuy1 = computed(() => cfg.value && price.value <= cfg.value.buy1 && price.value > cfg.value.buy2)
-const atBuy2 = computed(() => cfg.value && price.value <= cfg.value.buy2 && cfg.value.buy3 != null && price.value > cfg.value.buy3)
+const atBuy1 = computed(() => cfg.value && price.value <= cfg.value.buy1 && (cfg.value.buy2 == null || price.value > cfg.value.buy2))
+const atBuy2 = computed(() => cfg.value && cfg.value.buy2 != null && price.value <= cfg.value.buy2 && (cfg.value.buy3 == null || price.value > cfg.value.buy3))
 const atBuy3 = computed(() => cfg.value && cfg.value.buy3 != null && price.value <= cfg.value.buy3)
 
 const bannerClass = computed(() => {

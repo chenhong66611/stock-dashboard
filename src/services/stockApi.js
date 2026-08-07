@@ -3,11 +3,18 @@
  * 数据源：腾讯股票 API (qt.gtimg.cn)
  */
 
-// 自选ETF定义
+// 自选ETF定义（正式网格 + 参考观察）
 export const INDEX_LIST = [
+  // 正式网格
   { code: 'sh510310', name: '易方达沪深300ETF', shortName: '沪深300ETF' },
   { code: 'sh588000', name: '华夏科创50ETF', shortName: '科创50ETF' },
   { code: 'sh560010', name: '中证1000ETF', shortName: '中证1000' },
+  // 参考观察（额外资金才碰）
+  { code: 'sz159755', name: '电池ETF', shortName: '电池', watch: true },
+  { code: 'sh515790', name: '光伏ETF', shortName: '光伏', watch: true },
+  { code: 'sz159869', name: '游戏ETF', shortName: '游戏', watch: true },
+  { code: 'sh512980', name: '传媒ETF', shortName: '传媒', watch: true },
+  { code: 'sh512480', name: '半导体ETF', shortName: '半导体', watch: true },
 ]
 
 // 参考指数（卡片下方显示）
