@@ -86,7 +86,7 @@ function parseStockData(rawText) {
  */
 export function formatPrice(val) {
   if (val == null || isNaN(val)) return '--'
-  return val.toFixed(2)
+  return val.toFixed(3)
 }
 
 export function formatVolume(val) {
@@ -122,9 +122,9 @@ export async function fetchAllIndices() {
     throw new Error('数据源返回异常，请稍后重试')
   }
   const items = parseStockData(text)
-  // 合并名称和 ref 信息
+  // 合并名称、ref、watch 信息
   return items.map(item => {
     const meta = ALL_LIST.find(i => i.code === item.code)
-    return { ...item, name: meta?.name || item.name, ref: meta?.ref || false }
+    return { ...item, name: meta?.name || item.name, ref: meta?.ref || false, watch: meta?.watch || false }
   })
 }

@@ -59,7 +59,7 @@
         <div class="grid-row current">
           <span class="grid-dot cur-dot">▶</span>
           <span class="grid-label cur-label">★ 当前价</span>
-          <span class="grid-price cur-price">{{ price.toFixed(2) }}</span>
+          <span class="grid-price cur-price">{{ price.toFixed(3) }}</span>
         </div>
         <!-- 买入区 -->
         <div class="grid-row buy" :class="{ active: atBuy1 }">
@@ -144,69 +144,70 @@ const GRID = {
     targetGain: '+8%',
     note: '已走完一轮（2.88→3.10）',
   },
-  // ===== 参考观察（额外资金） =====
+  // ===== 参考观察（额外资金）=====
+  // 8/10 定稿：三档全部锚定"过去241天最低收盘价"，均有真实触发记录，120天有效
   sz159755: {
     sell1: 1.10,
-    buy1: 0.94, buy2: 0.85, buy3: 0.70,
-    amount1: '100份', amount2: '100份', amount3: '100份',
+    buy1: 0.93, buy2: 0.88, buy3: 0.825,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+17%',
+    targetGain: '+18%',
     note: '电池：出清尾声，离触发最近',
   },
   sh515790: {
     sell1: 1.00,
-    buy1: 0.82, buy2: 0.78, buy3: 0.70,
-    amount1: '100份', amount2: '100份', amount3: '100份',
+    buy1: 0.83, buy2: 0.79, buy3: 0.75,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+22%',
+    targetGain: '+21%',
     note: '光伏：美国封锁出尽',
   },
   sz159869: {
     sell1: 1.25,
-    buy1: 1.05, buy2: 1.00, buy3: null,
-    amount1: '100份', amount2: '100份', amount3: '',
+    buy1: 1.10, buy2: 1.045, buy3: 0.995,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+19%',
+    targetGain: '+14%',
     note: '游戏：版号破千+出海',
   },
   sh512980: {
     sell1: 0.97,
-    buy1: 0.78, buy2: 0.74, buy3: null,
-    amount1: '100份', amount2: '100份', amount3: '',
+    buy1: 0.84, buy2: 0.80, buy3: 0.76,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+24%',
+    targetGain: '+16%',
     note: '传媒：与游戏同板块',
   },
   sh512710: {
     sell1: 0.701,
-    buy1: 0.599, buy2: null, buy3: null,
-    amount1: '100份', amount2: '', amount3: '',
+    buy1: 0.615, buy2: 0.598, buy3: 0.585,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+17%',
+    targetGain: '+14%',
     note: '军工龙头：十五五规划+军贸出海',
   },
   sz159766: {
     sell1: 0.635,
-    buy1: 0.543, buy2: null, buy3: null,
-    amount1: '100份', amount2: '', amount3: '',
+    buy1: 0.562, buy2: 0.547, buy3: 0.532,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+17%',
+    targetGain: '+13%',
     note: '旅游：暑期旺季+旅游强国规划',
   },
   sz159996: {
     sell1: 1.629,
-    buy1: 1.392, buy2: null, buy3: null,
-    amount1: '100份', amount2: '', amount3: '',
+    buy1: 1.40, buy2: 1.38, buy3: 1.36,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+17%',
+    targetGain: '+16%',
     note: '家电：出口修复+持仓历史低位',
   },
   sh515250: {
     sell1: 1.086,
-    buy1: 0.928, buy2: null, buy3: null,
-    amount1: '100份', amount2: '', amount3: '',
+    buy1: 0.945, buy2: 0.928, buy3: 0.912,
+    amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
-    targetGain: '+17%',
+    targetGain: '+15%',
     note: '智能汽车：全场最低分位5%',
   },
 }
@@ -221,11 +222,11 @@ const grid = computed(() => {
   const g = cfg.value
   if (!g) return { s1:'--', s2:'--', b1:'--', b2:'--', b3:'--', amt1:'', amt2:'', amt3:'', cooldown:'', gain:'' }
   return {
-    s1: g.sell1.toFixed(2),
-    s2: g.sell2 != null ? g.sell2.toFixed(2) : '--',
-    b1: g.buy1.toFixed(2),
-    b2: g.buy2 != null ? g.buy2.toFixed(2) : '--',
-    b3: g.buy3 != null ? g.buy3.toFixed(2) : '--',
+    s1: g.sell1.toFixed(3),
+    s2: g.sell2 != null ? g.sell2.toFixed(3) : '--',
+    b1: g.buy1.toFixed(3),
+    b2: g.buy2 != null ? g.buy2.toFixed(3) : '--',
+    b3: g.buy3 != null ? g.buy3.toFixed(3) : '--',
     amt1: g.amount1, amt2: g.amount2, amt3: g.amount3,
     cooldown: g.cooldown,
     gain: g.targetGain,
@@ -262,7 +263,7 @@ const bannerText = computed(() => {
   if (!cfg.value || !price.value) return '加载中...'
   if (atSell.value) return '建议：全部卖出 🏆'
   if (atBuy1.value) return `建议：买入① ${cfg.value.amount1}（万联证券）`
-  if (atBuy2.value) return `建议：买入② ${cfg.value.amount2}（注意冷却期≥7天）`
+  if (atBuy2.value) return `建议：买入② ${cfg.value.amount2}（注意冷却期≥3天）`
   if (atBuy3.value) return `建议：买入③ ${cfg.value.amount3}（极端机会！）`
   if (cfg.value && price.value < cfg.value.buy1 && price.value > cfg.value.buy1 * 0.95) return '接近买入①，盯紧！'
   return '等待回调，不到不动'
