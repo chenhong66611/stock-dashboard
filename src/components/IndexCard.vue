@@ -185,6 +185,30 @@ const GRID = {
     targetGain: '+27%',
     note: '半导体：只看不买，等企稳',
   },
+  sh512660: {
+    sell1: 1.267,
+    buy1: 1.083, buy2: null, buy3: null,
+    amount1: '100份', amount2: '', amount3: '',
+    cooldown: '3天',
+    targetGain: '+17%',
+    note: '军工：十五五规划+军贸出海',
+  },
+  sz159766: {
+    sell1: 0.635,
+    buy1: 0.543, buy2: null, buy3: null,
+    amount1: '100份', amount2: '', amount3: '',
+    cooldown: '3天',
+    targetGain: '+17%',
+    note: '旅游：暑期旺季+旅游强国规划',
+  },
+  sz159996: {
+    sell1: 1.629,
+    buy1: 1.392, buy2: null, buy3: null,
+    amount1: '100份', amount2: '', amount3: '',
+    cooldown: '3天',
+    targetGain: '+17%',
+    note: '家电：出口修复+持仓历史低位',
+  },
 }
 
 const cfg = computed(() => GRID[props.data.code] || null)
