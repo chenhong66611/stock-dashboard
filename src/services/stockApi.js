@@ -9,15 +9,15 @@ export const INDEX_LIST = [
   { code: 'sh510310', name: '易方达沪深300ETF', shortName: '沪深300ETF' },
   { code: 'sh588000', name: '华夏科创50ETF', shortName: '科创50ETF' },
   { code: 'sh560010', name: '中证1000ETF', shortName: '中证1000' },
-  // 参考观察（额外资金才碰）
+  // 参考观察（额外资金才碰）——按把握度排序（8/10 版本A定稿：卖点到达率→触发距离→实证→逻辑）
   { code: 'sz159755', name: '电池ETF', shortName: '电池', watch: true },
   { code: 'sh515790', name: '光伏ETF', shortName: '光伏', watch: true },
   { code: 'sz159869', name: '游戏ETF', shortName: '游戏', watch: true },
-  { code: 'sh512980', name: '传媒ETF', shortName: '传媒', watch: true },
-  { code: 'sh512710', name: '军工龙头ETF', shortName: '军工', watch: true },
-  { code: 'sz159766', name: '旅游ETF', shortName: '旅游', watch: true },
-  { code: 'sz159996', name: '家电ETF', shortName: '家电', watch: true },
   { code: 'sh515250', name: '智能汽车ETF', shortName: '智能汽车', watch: true },
+  { code: 'sh512710', name: '军工龙头ETF', shortName: '军工', watch: true },
+  { code: 'sz159996', name: '家电ETF', shortName: '家电', watch: true },
+  { code: 'sh512980', name: '传媒ETF', shortName: '传媒', watch: true },
+  { code: 'sz159766', name: '旅游ETF', shortName: '旅游', watch: true },
 ]
 
 // 参考指数（卡片下方显示）
