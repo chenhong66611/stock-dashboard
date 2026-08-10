@@ -179,7 +179,7 @@ const GRID = {
     note: '传媒：与游戏同板块',
   },
   sh512710: {
-    sell1: 0.701,
+    sell1: 0.70,
     buy1: 0.615, buy2: 0.598, buy3: 0.585,
     amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
@@ -187,7 +187,7 @@ const GRID = {
     note: '军工龙头：十五五规划+军贸出海',
   },
   sz159766: {
-    sell1: 0.635,
+    sell1: 0.61,
     buy1: 0.562, buy2: 0.547, buy3: 0.532,
     amount1: '100份', amount2: '200份', amount3: '200份',
     cooldown: '3天',
