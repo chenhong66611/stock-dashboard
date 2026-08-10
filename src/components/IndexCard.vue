@@ -177,14 +177,6 @@ const GRID = {
     targetGain: '+24%',
     note: '传媒：与游戏同板块',
   },
-  sh512480: {
-    sell1: 1.00,
-    buy1: 0.79, buy2: null, buy3: null,
-    amount1: '记号', amount2: '', amount3: '',
-    cooldown: '3天',
-    targetGain: '+27%',
-    note: '半导体：只看不买，等企稳',
-  },
   sh512710: {
     sell1: 0.701,
     buy1: 0.599, buy2: null, buy3: null,

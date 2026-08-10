@@ -14,7 +14,6 @@ export const INDEX_LIST = [
   { code: 'sh515790', name: '光伏ETF', shortName: '光伏', watch: true },
   { code: 'sz159869', name: '游戏ETF', shortName: '游戏', watch: true },
   { code: 'sh512980', name: '传媒ETF', shortName: '传媒', watch: true },
-  { code: 'sh512480', name: '半导体ETF', shortName: '半导体', watch: true },
   { code: 'sh512710', name: '军工龙头ETF', shortName: '军工', watch: true },
   { code: 'sz159766', name: '旅游ETF', shortName: '旅游', watch: true },
   { code: 'sz159996', name: '家电ETF', shortName: '家电', watch: true },
