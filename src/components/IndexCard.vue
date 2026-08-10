@@ -185,13 +185,13 @@ const GRID = {
     targetGain: '+27%',
     note: '半导体：只看不买，等企稳',
   },
-  sh512660: {
-    sell1: 1.267,
-    buy1: 1.083, buy2: null, buy3: null,
+  sh512710: {
+    sell1: 0.701,
+    buy1: 0.599, buy2: null, buy3: null,
     amount1: '100份', amount2: '', amount3: '',
     cooldown: '3天',
     targetGain: '+17%',
-    note: '军工：十五五规划+军贸出海',
+    note: '军工龙头：十五五规划+军贸出海',
   },
   sz159766: {
     sell1: 0.635,
@@ -208,6 +208,14 @@ const GRID = {
     cooldown: '3天',
     targetGain: '+17%',
     note: '家电：出口修复+持仓历史低位',
+  },
+  sh515250: {
+    sell1: 1.086,
+    buy1: 0.928, buy2: null, buy3: null,
+    amount1: '100份', amount2: '', amount3: '',
+    cooldown: '3天',
+    targetGain: '+17%',
+    note: '智能汽车：全场最低分位5%',
   },
 }
 
