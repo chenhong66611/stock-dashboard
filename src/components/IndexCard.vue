@@ -46,7 +46,7 @@
     </div>
 
     <!-- 网格计划 -->
-    <div class="grid-wrap" v-if="cfg">
+    <div class="grid-wrap">
       <div class="grid-title">{{ isWatch ? '👀 参考观察' : '📊 正式网格' }}</div>
       <div class="grid-body">
         <!-- 卖出目标 -->
@@ -244,8 +244,7 @@ const atBuy2 = computed(() => cfg.value && cfg.value.buy2 != null && price.value
 const atBuy3 = computed(() => cfg.value && cfg.value.buy3 != null && price.value <= cfg.value.buy3)
 
 const bannerClass = computed(() => {
-  if (!cfg.value) return 'banner-wait'
-  if (!price.value) return ''
+  if (!cfg.value || !price.value) return ''
   if (atSell.value) return 'banner-sell-all'
   if (atBuy1.value || atBuy2.value || atBuy3.value) return 'banner-buy'
   // 距买① 5%以内
@@ -261,8 +260,7 @@ const bannerIcon = computed(() => {
 })
 
 const bannerText = computed(() => {
-  if (!cfg.value) return '🔭 纯观察 · 不设网格'
-  if (!price.value) return '加载中...'
+  if (!cfg.value || !price.value) return '加载中...'
   if (atSell.value) return '建议：全部卖出 🏆'
   if (atBuy1.value) return `建议：买入① ${cfg.value.amount1}（万联证券）`
   if (atBuy2.value) return `建议：买入② ${cfg.value.amount2}（注意冷却期≥3天）`

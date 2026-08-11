@@ -18,9 +18,6 @@ export const INDEX_LIST = [
   { code: 'sz159996', name: '家电ETF', shortName: '家电', watch: true },
   { code: 'sh512980', name: '传媒ETF', shortName: '传媒', watch: true },
   { code: 'sz159766', name: '旅游ETF', shortName: '旅游', watch: true },
-  // 纯观察（不加网格，8/10 用户要求）——避险/防御风向标
-  { code: 'sh518880', name: '黄金ETF', shortName: '黄金', watch: true },
-  { code: 'sh512010', name: '医药ETF', shortName: '医药', watch: true },
 ]
 
 // 参考指数（卡片下方显示）
