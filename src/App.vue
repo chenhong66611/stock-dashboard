@@ -4,7 +4,7 @@
     <header class="header">
       <div class="header-left">
         <h1>ETF 盯盘</h1>
-        <div class="subtitle">正式网格3只 · 参考观察8只</div>
+        <div class="subtitle">正式网格3只 · 参考观察10只</div>
       </div>
       <div class="header-right">
         <div class="market-status">
