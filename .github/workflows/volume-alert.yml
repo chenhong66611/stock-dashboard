@@ -28,9 +28,9 @@ jobs:
       - name: 发送邮件
         if: hashFiles('mail.html') != ''
         env:
-          SMTP_USER: ${{ vars.SMTP_USER }}
+          SMTP_USER: '3267254907@qq.com'
           SMTP_CODE: ${{ secrets.SMTP_CODE }}
-          SMTP_TO: ${{ vars.SMTP_TO }}
+          SMTP_TO: '3267254907@qq.com'
         run: python scripts/sendmail.py
 
       # 记录本次发送（防重），推回仓库
