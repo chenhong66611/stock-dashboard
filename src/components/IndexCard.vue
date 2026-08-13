@@ -85,6 +85,60 @@
       </div>
     </div>
 
+    <!-- 量能分析块 -->
+    <div class="vol-panel" v-if="analysis && !analysis.error">
+      <div class="vol-head">
+        <span class="vol-stage" :class="stageClass">{{ analysis.phase.stage }}</span>
+        <span class="vol-quad">{{ analysis.volume.quad }}</span>
+        <span class="vol-combine" :class="combineClass">{{ analysis.combine.verdict }}</span>
+        <span class="vol-strong" v-if="analysis.strongSignal">
+          <template v-if="analysis.strongSignal.strong">🔥 转强信号</template>
+          <template v-else-if="analysis.strongSignal.fake">⚠️ 虚涨</template>
+        </span>
+      </div>
+      <div class="vol-grid">
+        <div class="vol-item">
+          <span>今日量</span>
+          <b>{{ fmtVolHand(analysis.volume.todayVol) }}</b>
+        </div>
+        <div class="vol-item">
+          <span>5日均量</span>
+          <b>{{ fmtVolHand(analysis.volume.vol5) }}</b>
+        </div>
+        <div class="vol-item">
+          <span>量比</span>
+          <b>{{ fmtRatio(analysis.volume.volRatio) }}</b>
+        </div>
+        <div class="vol-item">
+          <span>241分位</span>
+          <b>{{ analysis.percentile ? analysis.percentile.pct + '%' : '--' }}</b>
+        </div>
+      </div>
+      <div class="vol-ma">
+        <span :class="{ up: analysis.ma.aboveMA5 }">MA5 {{ fmtPrice(analysis.ma.ma5) }}</span>
+        <span :class="{ up: analysis.ma.aboveMA10 }">MA10 {{ fmtPrice(analysis.ma.ma10) }}</span>
+        <span :class="{ up: analysis.ma.aboveMA20 }">MA20 {{ fmtPrice(analysis.ma.ma20) }}</span>
+        <span class="vol-offlow">距241低点 {{ analysis.percentile ? analysis.percentile.offLow.toFixed(1) + '%' : '--' }}</span>
+      </div>
+      <div class="vol-fund" v-if="analysis.fund">
+        <div class="fund-row">
+          <span class="fund-label">主力今日</span>
+          <span class="fund-val" :class="fundClass(analysis.fund.main)">{{ fmtYi(analysis.fund.main) }}</span>
+          <span class="fund-label">5日累计</span>
+          <span class="fund-val" :class="fundClass(analysis.fund.main5d)">{{ fmtYi(analysis.fund.main5d) }}</span>
+          <span class="fund-label">超大单</span>
+          <span class="fund-val" :class="fundClass(analysis.fund.superBig)">{{ fmtYi(analysis.fund.superBig) }}</span>
+        </div>
+        <div class="fund-verdict" :class="fundClass(analysis.fund.main)">
+          {{ analysis.fund.verdict }} · {{ analysis.fund.desc }}
+        </div>
+      </div>
+      <div class="vol-conclusion">{{ analysis.conclusion }}</div>
+    </div>
+    <div class="vol-panel vol-error" v-else-if="analysis && analysis.error">
+      量能分析：{{ analysis.error }}
+    </div>
+
     <!-- 详情 -->
     <div class="card-details">
       <div class="detail-item">
@@ -110,10 +164,12 @@
 <script setup>
 import { computed } from 'vue'
 import { formatPrice, formatVolume } from '../services/stockApi.js'
+import { fmtYi, fmtVolHand } from '../services/volumeAnalysis.js'
 
 const props = defineProps({
   data: { type: Object, required: true },
   holding: { type: Number, default: 0 },
+  analysis: { type: Object, default: null },
 })
 
 // 每只ETF的网格计划（8/7 定稿，基于历史K线数据）
@@ -284,6 +340,42 @@ function formatChange(val) {
 function formatPct(val) {
   if (val == null || isNaN(val)) return '--'
   return (val > 0 ? '+' : '') + val.toFixed(2)
+}
+
+// ===== 量能分析相关 =====
+
+function fmtRatio(v) {
+  if (v == null || isNaN(v)) return '--'
+  return v.toFixed(2)
+}
+function fmtPrice(v) {
+  if (v == null || isNaN(v)) return '--'
+  return v.toFixed(3)
+}
+
+// 阶段颜色：转强/反转=红（涨色），止跌=绿（企稳），下跌通道=深绿，横盘=灰
+const stageClass = computed(() => {
+  const s = props.analysis?.phase?.stage
+  if (s === '转强' || s === '反转') return 'stage-up'
+  if (s === '止跌') return 'stage-down'
+  if (s === '下跌通道') return 'stage-fall'
+  return 'stage-flat'
+})
+
+// 组合判断颜色：真转强=红，温和吸筹=绿，出货=深绿，阴跌=绿
+const combineClass = computed(() => {
+  const v = props.analysis?.combine?.verdict
+  if (v === '真转强') return 'combine-up'
+  if (v === '出货') return 'combine-fall'
+  if (v === '温和吸筹' || v === '阴跌') return 'combine-down'
+  if (v === '流入') return 'combine-up'
+  return 'combine-flat'
+})
+
+// 资金数值颜色：正=红，负=绿
+function fundClass(val) {
+  if (val == null || isNaN(val)) return ''
+  return val > 0 ? 'up' : val < 0 ? 'down' : ''
 }
 </script>
 
@@ -540,6 +632,131 @@ function formatPct(val) {
   border-top: 1px solid rgba(255,255,255,0.03);
   margin-top: 2px;
   letter-spacing: 0.3px;
+}
+
+/* ===== 量能分析块 ===== */
+.vol-panel {
+  margin-bottom: 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.72rem;
+}
+.vol-error { color: var(--text-muted); }
+
+.vol-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.vol-stage {
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+.stage-up   { background: rgba(242,54,69,0.12); color: var(--red); }
+.stage-down { background: rgba(0,200,83,0.12); color: var(--green); }
+.stage-fall { background: rgba(0,200,83,0.06); color: rgba(0,200,83,0.7); }
+.stage-flat { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
+
+.vol-quad {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.vol-combine {
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+.combine-up   { background: rgba(242,54,69,0.15); color: var(--red); }
+.combine-down { background: rgba(0,200,83,0.15); color: var(--green); }
+.combine-fall { background: rgba(0,200,83,0.08); color: rgba(0,200,83,0.8); }
+.combine-flat { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
+
+.vol-strong {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(255,200,0,0.15);
+  color: #ffc107;
+  font-weight: 700;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.vol-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.vol-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 0;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+}
+.vol-item span { font-size: 0.62rem; color: var(--text-muted); }
+.vol-item b {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.vol-ma {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.vol-ma .up { color: var(--red); font-weight: 600; }
+.vol-offlow { color: var(--text-secondary); }
+
+.vol-fund {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+}
+.fund-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fund-label { font-size: 0.62rem; color: var(--text-muted); }
+.fund-val {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+}
+.fund-verdict {
+  margin-top: 4px;
+  font-size: 0.66rem;
+  color: var(--text-secondary);
+}
+
+.vol-conclusion {
+  padding-top: 7px;
+  border-top: 1px dashed rgba(255,255,255,0.06);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 /* ===== 详情 ===== */

@@ -42,6 +42,19 @@
       </div>
     </div>
 
+    <!-- 大盘情绪条 -->
+    <div class="mood-bar" v-if="mood">
+      <span class="mood-label">大盘情绪</span>
+      <span class="mood-value" :class="mood.cls">{{ mood.text }}</span>
+      <span class="mood-detail">{{ mood.detail }}</span>
+    </div>
+
+    <!-- 关键信号栏 -->
+    <div class="signal-bar" v-if="signals.length">
+      <span class="signal-title">📡 关键信号</span>
+      <span v-for="s in signals" :key="s.code + s.label" class="signal-chip" :class="s.cls">{{ s.name }} {{ s.label }}</span>
+    </div>
+
     <!-- 错误提示 -->
     <div class="error-bar" v-if="error">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -61,7 +74,8 @@
 
     <!-- ETF 卡片网格 -->
     <div class="index-grid" v-if="mainItems.length">
-      <IndexCard v-for="item in mainItems" :key="item.code" :data="item" :holding="holdings[item.code] || 0" />
+      <IndexCard v-for="item in mainItems" :key="item.code" :data="item" :holding="holdings[item.code] || 0"
+                 :analysis="analysisMap[item.code]" />
     </div>
 
     <!-- 参考指数分隔线 -->
@@ -90,6 +104,18 @@
       </div>
     </div>
 
+    <!-- 新闻区 -->
+    <div class="news-section" v-if="flatNews.length">
+      <div class="news-title">📰 今日要闻</div>
+      <div class="news-list">
+        <a v-for="(n, i) in flatNews" :key="i" class="news-item" :href="n.url" target="_blank" rel="noopener">
+          <span class="news-tag" :class="'tag-' + n.tag">{{ n.tag }}</span>
+          <span class="news-text">{{ n.title }}</span>
+          <span class="news-meta">{{ n.date }}<template v-if="n.source"> · {{ n.source }}</template></span>
+        </a>
+      </div>
+    </div>
+
     <!-- 页脚 -->
     <footer class="footer">
       数据来源：<a href="https://qt.gtimg.cn" target="_blank" rel="noopener">腾讯股票</a> ·
@@ -103,6 +129,8 @@
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 
 import { fetchAllIndices, isTradingTime, formatTime } from './services/stockApi.js'
+import { analyzeAll } from './services/volumeAnalysis.js'
+import { fetchNewsAll } from './services/newsApi.js'
 import IndexCard from './components/IndexCard.vue'
 
 const indices = ref([])
@@ -111,6 +139,12 @@ const error = ref('')
 const lastUpdate = ref('')
 const marketOpen = ref(false)
 const timer = ref(null)
+
+// 量能分析结果：{code: report}，新闻列表
+const analysisMap = ref({})
+const newsList = ref([])
+let lastAnalysisAt = 0
+let lastNewsAt = 0
 
 // 持仓金额（按ETF代码索引，买入后手动更新）
 const holdings = reactive({
@@ -133,6 +167,48 @@ const stats = computed(() => {
   }
 })
 
+// 大盘情绪：3只正式网格标的的平均涨跌
+const mood = computed(() => {
+  const formal = indices.value.filter(i => !i.ref && !i.watch)
+  if (!formal.length) return null
+  const avg = formal.reduce((a, i) => a + (i.changePct || 0), 0) / formal.length
+  const upCount = formal.filter(i => i.change > 0).length
+  let text, cls
+  if (avg > 0.3)      { text = '偏暖 🔥'; cls = 'mood-up' }
+  else if (avg < -0.3){ text = '偏冷 🧊'; cls = 'mood-down' }
+  else                { text = '中性 ⚖️'; cls = 'mood-flat' }
+  return {
+    text, cls,
+    detail: `沪深300 ${fmtPct(formal[0]?.changePct)} · 科创50 ${fmtPct(formal[1]?.changePct)} · 中证1000 ${fmtPct(formal[2]?.changePct)} | ${upCount}/3 上涨`,
+  }
+})
+
+// 关键信号汇总（转强/反转/出货/吸筹/止跌）
+const signals = computed(() => {
+  const list = []
+  for (const rep of Object.values(analysisMap.value)) {
+    if (!rep || rep.error) continue
+    if (rep.strongSignal?.strong) list.push({ code: rep.code, name: rep.name, label: '🔥转强', cls: 'sig-up' })
+    if (rep.phase?.stage === '反转') list.push({ code: rep.code, name: rep.name, label: '↗️反转', cls: 'sig-up' })
+    if (rep.combine?.verdict === '出货') list.push({ code: rep.code, name: rep.name, label: '⚠️出货', cls: 'sig-fall' })
+    if (rep.fund?.verdict === '吸筹') list.push({ code: rep.code, name: rep.name, label: '🧲吸筹', cls: 'sig-down' })
+    if (rep.phase?.stage === '止跌') list.push({ code: rep.code, name: rep.name, label: '🛑止跌', cls: 'sig-down' })
+  }
+  return list.slice(0, 10)
+})
+
+// 新闻拍平（按关键词分组 → 平铺取前6条）
+const flatNews = computed(() => {
+  const all = []
+  for (const group of newsList.value) all.push(...group.list)
+  return all.slice(0, 6)
+})
+
+function fmtPct(v) {
+  if (v == null || isNaN(v)) return '--'
+  return (v > 0 ? '+' : '') + v.toFixed(2) + '%'
+}
+
 async function refresh() {
   if (loading.value) return
   loading.value = true
@@ -142,6 +218,18 @@ async function refresh() {
     indices.value = data
     lastUpdate.value = data[0]?.time || new Date().toLocaleTimeString('zh-CN', { hour12: false })
     marketOpen.value = isTradingTime()
+
+    // 量能分析：最多每60秒一次（K线缓存5分钟兜底）
+    const now = Date.now()
+    if (now - lastAnalysisAt > 60_000) {
+      lastAnalysisAt = now
+      analyzeAll(data).then(map => { analysisMap.value = map }).catch(e => console.error('分析失败:', e))
+    }
+    // 新闻：最多每5分钟一次
+    if (now - lastNewsAt > 300_000) {
+      lastNewsAt = now
+      fetchNewsAll(['A股', 'ETF', '沪深300', '科创50']).then(list => { newsList.value = list }).catch(e => console.error('新闻失败:', e))
+    }
   } catch (e) {
     error.value = e.message || '获取数据失败，请检查网络连接'
     console.error('Stock fetch error:', e)
