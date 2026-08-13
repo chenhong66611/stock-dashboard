@@ -19,11 +19,11 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       # 分析 + 决策（生成 mail.html / mail_subject.txt，无需发送时不生成）
       - name: 量能分析
