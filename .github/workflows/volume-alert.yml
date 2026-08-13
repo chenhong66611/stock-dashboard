@@ -4,8 +4,13 @@ on:
   # 北京时间 9:00-15:55 每5分钟（UTC = 北京-8）
   schedule:
     - cron: '*/5 1-7 * * 1-5'
-  # 手动触发（调试用）
+  # 手动触发（调试用）：force 填 morning / signal / review 可强制发对应邮件
   workflow_dispatch:
+    inputs:
+      force:
+        description: '强制发送类型 (morning/signal/review，留空=按时间自动)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -22,7 +27,12 @@ jobs:
 
       # 分析 + 决策（生成 mail.html / mail_subject.txt，无需发送时不生成）
       - name: 量能分析
-        run: node scripts/analyze.mjs
+        run: |
+          if [ -n "${{ github.event.inputs.force }}" ]; then
+            ALERT_TYPE="${{ github.event.inputs.force }}" node scripts/analyze.mjs
+          else
+            node scripts/analyze.mjs
+          fi
 
       # 发送邮件
       - name: 发送邮件
