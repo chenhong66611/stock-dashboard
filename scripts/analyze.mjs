@@ -156,11 +156,12 @@ function newsHtml(news) {
 
 function reportRows(reports) {
   return reports.map(r => {
-    if (r.error) return `<tr><td>${ESC(r.name)}</td><td colspan="7" style="color:#f23645">${ESC(r.error)}</td></tr>`
+    if (r.error) return `<tr><td>${ESC(r.name)}</td><td colspan="8" style="color:#f23645">${ESC(r.error)}</td></tr>`
     const pct = r.quotePct ?? r.price
     const v = r.volume
     const fundMain = r.fund?.main
     const main5 = r.fund?.main5d
+    const fundSmall = r.fund?.small
     return `<tr style="border-bottom:1px solid #eee">
       <td style="padding:6px 8px;font-weight:600">${ESC(r.name)}</td>
       <td style="padding:6px 8px;text-align:right">${r.price.toFixed(3)}</td>
@@ -169,6 +170,7 @@ function reportRows(reports) {
       <td style="padding:6px 8px;text-align:center">${v.volRatio ? v.volRatio.toFixed(2) : '--'}<span style="color:#8e99a4;font-size:11px"> ${ESC(v.quad)}</span></td>
       <td style="padding:6px 8px;text-align:center;color:${r.combine?.verdict === '真转强' ? RED : r.combine?.verdict === '出货' ? GREEN : GRAY};font-weight:600">${ESC(r.combine?.verdict || '--')}</td>
       <td style="padding:6px 8px;text-align:right;color:${fundMain ? colorOf(fundMain) : GRAY}">${fundMain ? fmtYi(fundMain) : '--'}</td>
+      <td style="padding:6px 8px;text-align:right;color:${fundSmall != null ? colorOf(fundSmall) : GRAY}">${fundSmall != null ? fmtYi(fundSmall) : '--'}</td>
       <td style="padding:6px 8px;text-align:right;color:${main5 ? colorOf(main5) : GRAY}">${main5 ? fmtYi(main5) : '--'}</td>
     </tr>`
   }).join('')
@@ -196,7 +198,7 @@ function buildHtml(type, reports, news, signals) {
     <table style="border-collapse:collapse;width:100%;font-size:13px;background:#fafbfc">
       <tr style="background:#f0f2f5">
         <th style="padding:6px 8px;text-align:left">阶段</th><th style="padding:6px 8px">量比/量价</th><th style="padding:6px 8px">MA5</th><th style="padding:6px 8px">MA10</th><th style="padding:6px 8px">MA20</th>
-        <th style="padding:6px 8px">241分位</th><th style="padding:6px 8px">主力今日</th><th style="padding:6px 8px">5日累计</th>
+        <th style="padding:6px 8px">241分位</th><th style="padding:6px 8px">主力今日</th><th style="padding:6px 8px">散户今日</th><th style="padding:6px 8px">5日累计</th>
       </tr>
       <tr style="border-bottom:1px solid #eee">
         <td style="padding:6px 8px;text-align:center">${stageBadge(held.phase.stage)}</td>
@@ -206,6 +208,7 @@ function buildHtml(type, reports, news, signals) {
         <td style="padding:6px 8px;text-align:center;color:${held.ma.aboveMA20 ? RED : GRAY}">${held.ma.ma20?.toFixed(3) ?? '--'}</td>
         <td style="padding:6px 8px;text-align:center">${held.percentile?.pct ?? '--'}%</td>
         <td style="padding:6px 8px;text-align:right;color:${held.fund ? colorOf(held.fund.main) : GRAY}">${held.fund ? fmtYi(held.fund.main) : '--'}</td>
+        <td style="padding:6px 8px;text-align:right;color:${held.fund && held.fund.small != null ? colorOf(held.fund.small) : GRAY}">${held.fund && held.fund.small != null ? fmtYi(held.fund.small) : '--'}</td>
         <td style="padding:6px 8px;text-align:right;color:${held.fund ? colorOf(held.fund.main5d) : GRAY}">${held.fund ? fmtYi(held.fund.main5d) : '--'}</td>
       </tr>
     </table>
@@ -240,7 +243,7 @@ function buildHtml(type, reports, news, signals) {
     <tr style="background:#f0f2f5">
       <th style="padding:6px 8px;text-align:left">标的</th><th style="padding:6px 8px">现价</th><th style="padding:6px 8px">涨跌</th>
       <th style="padding:6px 8px">阶段</th><th style="padding:6px 8px">量比</th><th style="padding:6px 8px">组合</th>
-      <th style="padding:6px 8px">主力今日</th><th style="padding:6px 8px">5日累计</th>
+      <th style="padding:6px 8px">主力今日</th><th style="padding:6px 8px">散户今日</th><th style="padding:6px 8px">5日累计</th>
     </tr>
     ${reportRows(reports)}
   </table>
@@ -287,8 +290,8 @@ async function main() {
     if (r.error) continue
     if (r.strongSignal?.strong) signals.push(`🔥 <b>${ESC(r.name)}</b> 转强信号：量 ${ESC(r.strongSignal.volStr)}，连阳站上MA5（现价 ${r.price.toFixed(3)}，${sign(r.quotePct)}%）`)
     if (r.phase?.stage === '反转') signals.push(`↗️ <b>${ESC(r.name)}</b> 反转：突破20日高点（现价 ${r.price.toFixed(3)}）`)
-    if (r.combine?.verdict === '出货') signals.push(`⚠️ <b>${ESC(r.name)}</b> 出货：放量+主力流出，最危险（现价 ${r.price.toFixed(3)}，主力${fmtYi(r.fund?.main)}）`)
-    if (r.fund?.verdict === '吸筹') signals.push(`🧲 <b>${ESC(r.name)}</b> 吸筹：跌+主力流入，跌着有人接（现价 ${r.price.toFixed(3)}，主力${fmtYi(r.fund.main)}）`)
+    if (r.combine?.verdict === '出货') signals.push(`⚠️ <b>${ESC(r.name)}</b> 出货：放量+主力流出（主力${fmtYi(r.fund?.main)}，散户${r.fund?.small != null ? fmtYi(r.fund.small) : '--'}），最危险（现价 ${r.price.toFixed(3)}）`)
+    if (r.fund?.verdict === '吸筹') signals.push(`🧲 <b>${ESC(r.name)}</b> 吸筹：跌+主力流入（主力${fmtYi(r.fund.main)}，散户${r.fund.small != null ? fmtYi(r.fund.small) : '--'}），跌着有人接（现价 ${r.price.toFixed(3)}）`)
     if (r.phase?.stage === '止跌') signals.push(`🛑 <b>${ESC(r.name)}</b> 止跌：缩量不创新低（现价 ${r.price.toFixed(3)}）`)
   }
 
@@ -317,7 +320,10 @@ async function main() {
   console.log(`已生成邮件：${typeName}，信号 ${signals.length} 条，标的 ${reports.length} 只`)
 }
 
-main().catch(e => {
-  console.error('分析失败:', e)
-  process.exit(1)
-})
+if (!process.env.SKIP_MAIN) {
+  main().catch(e => {
+    console.error('分析失败:', e)
+    process.exit(1)
+  })
+}
+export { buildHtml }
