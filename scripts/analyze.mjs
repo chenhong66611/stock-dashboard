@@ -6,7 +6,7 @@
  *  - 早报  09:00  必发（全量报告 + 新闻）
  *  - 盘中  09:30-15:00 每5分钟检查，出现新信号/挂单临近立即发（精简邮件）
  *  - 复盘  15:05  必发（全量报告 + 新闻）
- * 每天总上限 MAX_DAILY=12 条（防异常刷屏），早报/复盘不受上限限制
+ * 每天总上限 MAX_DAILY=60 条（防异常刷屏），早报/复盘不受上限限制
  *
  * 状态：state.json（信号去重 + 当天发送计数 + 挂单提醒去重），推回仓库
  * 防重：.alert-last 记录"日期:类型"（早报/复盘当天一次），兼容旧机制
@@ -137,6 +137,18 @@ function collectSignals(reports) {
     out.push(...sig)
   }
   return out
+}
+
+// ===== 数据日期切换：昨日数据→今日数据时，昨日信号作废，今日重新提醒 =====
+// 场景：9:00早报基于昨日K线（信号=昨日状态），9:30后K线切到今日，
+// 若active里还留着昨日的指纹，今日同一标的再出现同信号会被误判为"已提醒过"而漏报。
+export function onDataDate(st, dataDate) {
+  if (dataDate && st.dataDate && dataDate !== st.dataDate) {
+    st.active = []
+    st.sentOnce = []
+  }
+  st.dataDate = dataDate
+  return st
 }
 
 // ===== 信号过滤：只发"新出现"的；消失后再出现 → 简短提醒（🔄）=====
@@ -291,6 +303,14 @@ function reportRows(reports) {
   }).join('')
 }
 
+// 数据异常警告条（拉取失败/缺资金数据的标的过半时显示）
+function warnHtml(dataWarn) {
+  if (!dataWarn) return ''
+  return `<div style="background:#fff0f0;border:1px solid #f23645;color:#f23645;padding:8px 12px;border-radius:6px;margin-top:12px;font-size:13px">
+    <b>⚠️ 数据异常</b>：11只中 ${dataWarn.err} 只拉取失败、${dataWarn.fundMiss} 只缺资金数据，<b>本邮件分析可能不完整，请谨慎参考</b>
+  </div>`
+}
+
 // 挂单提醒 HTML
 function orderHtml(orderAlerts) {
   if (!orderAlerts.length) return ''
@@ -308,7 +328,7 @@ function heldLine(r) {
   return `<p style="margin:4px 0;font-size:13px">⭐ <b>持仓 ${ESC(r.name)}</b> ${r.price.toFixed(3)}（${sign(pct)}%） · ${stageBadge(r.phase.stage)} · 量比${r.volume.volRatio ? r.volume.volRatio.toFixed(2) : '--'} · 主力${r.fund ? fmtYi(r.fund.main) : '--'} · 散户${r.fund && r.fund.small != null ? fmtYi(r.fund.small) : '--'}</p>`
 }
 
-function buildHtml(type, reports, news, signals, orderAlerts, focus) {
+function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
   const p = bjParts()
   const typeName = { morning: '早报', review: '复盘', signal: '盘中信号' }[type]
   const dateStr = `${p.m}月${p.day}日 周${p.week}`
@@ -330,7 +350,7 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus) {
   // ===== 盘中精简邮件 =====
   if (type === 'signal') {
     const held = reports.find(r => r.code === 'sh588000')
-    return head +
+    return head + warnHtml(dataWarn) +
       (focus ? focusHtml(reports, focus) : '') +
       (signals.length ? `<h3 style="margin-top:20px">🔔 新信号</h3>${signals.map(s => `<p style="font-size:13px;margin:4px 0">${s.html}</p>`).join('')}` : '') +
       orderHtml(orderAlerts) +
@@ -378,7 +398,7 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus) {
     ${signals.map(s => `<p style="font-size:13px;margin:4px 0">${s.html}</p>`).join('')}`
   }
 
-  return head + `
+  return head + warnHtml(dataWarn) + `
   <p style="font-size:13px;margin-top:16px">大盘情绪：<b style="color:${moodColor};font-size:15px">${moodText}</b>
     <span style="color:#8e99a4">${formalOk.map(r => `${ESC(r.name)} ${sign(r.quotePct)}%`).join(' · ')}</span></p>
 
@@ -413,7 +433,6 @@ async function main() {
 
   const st = loadState()
   const p = bjParts()
-  const dateStr = `${p.m}月${p.day}日 周${p.week}`
 
   // 早报/复盘：当天一次（.alert-last 防重）
   if (type !== 'signal') {
@@ -439,6 +458,10 @@ async function main() {
     }
   }
 
+  // 数据日期切换（昨日数据→今日数据）：昨日信号作废，今日重新提醒
+  const dataDate = reports.find(r => !r.error)?.date
+  onDataDate(st, dataDate)
+
   // 信号：只发"新出现"的（正在提醒中的不重复）；信号消失后再出现 → 再提醒（简短版）
   const allSignals = collectSignals(reports)
   const freshSignals = filterSignals(allSignals, st, reports)
@@ -463,10 +486,16 @@ async function main() {
     news = groups.flat()
   }
 
+  // 数据异常检测：拉取失败/缺资金数据的标的过半 → 邮件顶部警告
+  const errCount = reports.filter(r => r.error).length
+  const fundMiss = reports.filter(r => !r.error && !r.fund).length
+  const HALF = Math.ceil(INDEX_LIST.length / 2)
+  const dataWarn = errCount >= HALF || fundMiss >= HALF ? { err: errCount, fundMiss } : null
+
   // 盘中发新信号（精简）；早报/复盘发当天全部活跃信号（总结）
   const showSignals = type === 'signal' ? freshSignals : allSignals
   const focus = type === 'signal' ? periodFocus(hhmm) : null
-  const html = buildHtml(type, reports, news, showSignals, orderAlerts, focus)
+  const html = buildHtml(type, reports, news, showSignals, orderAlerts, focus, dataWarn)
   const typeName = { morning: '早报', review: '复盘', signal: '盘中信号' }[type]
   fs.writeFileSync('mail.html', html)
   fs.writeFileSync('mail_subject.txt', `ETF量能${typeName} ${p.m}月${p.day}日 ${showSignals.length ? `(${showSignals.length}个信号)` : orderAlerts.length ? '(挂单临近)' : ''}`)
