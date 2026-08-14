@@ -2,14 +2,14 @@
 /**
  * 云端量能分析脚本（GitHub Actions 每5分钟调度）
  *
- * 分析全部11只标的（量能+阶段+均线+分位+资金+组合判断），邮件在关键时点发送：
- *  - 早报  09:00  （全量报告 + 新闻）
- *  - 盘中① 10:00  （关键信号，有信号才发）
- *  - 盘中② 13:30  （关键信号）
- *  - 盘中③ 14:45  （关键信号）
- *  - 复盘  15:05  （全量报告 + 新闻）
+ * 调度（事件驱动，无固定时点，误差≤5分钟）：
+ *  - 早报  09:00  必发（全量报告 + 新闻）
+ *  - 盘中  09:30-15:00 每5分钟检查，出现新信号/挂单临近立即发（精简邮件）
+ *  - 复盘  15:05  必发（全量报告 + 新闻）
+ * 每天总上限 MAX_DAILY=12 条（防异常刷屏），早报/复盘不受上限限制
  *
- * 防重：.alert-last 文件记录"日期:类型"，当天同类型只发一次
+ * 状态：state.json（信号去重 + 当天发送计数 + 挂单提醒去重），推回仓库
+ * 防重：.alert-last 记录"日期:类型"（早报/复盘当天一次），兼容旧机制
  * 假日：K线最后日期距今天超过3天则跳过（避免节假日空报）
  *
  * 输出：mail.html（邮件正文）+ mail_subject.txt；无需发送时不生成
@@ -35,6 +35,21 @@ const INDEX_LIST = [
 
 const WEEK_CN = ['日', '一', '二', '三', '四', '五', '六']
 
+// ===== 挂单配置（只提醒价格临近，不带份数/金额）=====
+// levels: 每档 { p: 挂单价, d: 'buy'买入档 | 'sell'卖出档 }
+const ORDERS = [
+  { code: 'sh588000', name: '科创50ETF', levels: [{ p: 1.55, d: 'buy' }, { p: 2.02, d: 'sell' }] },
+  { code: 'sz159755', name: '电池', levels: [{ p: 0.93, d: 'buy' }] },
+  { code: 'sh515790', name: '光伏', levels: [{ p: 0.83, d: 'buy' }] },
+  { code: 'sz159869', name: '游戏', levels: [{ p: 1.10, d: 'buy' }] },
+  { code: 'sh515250', name: '智能汽车', levels: [{ p: 0.945, d: 'buy' }, { p: 0.928, d: 'buy' }] },
+  { code: 'sh512710', name: '军工', levels: [{ p: 0.615, d: 'buy' }] },
+  { code: 'sz159996', name: '家电', levels: [{ p: 1.392, d: 'buy' }] },
+  { code: 'sz159766', name: '旅游', levels: [{ p: 0.547, d: 'buy' }] },
+]
+const NEAR_RATIO = 0.01   // 距挂单价 ≤1% 触发提醒
+const MAX_DAILY = 12      // 每天发送总上限（早报/复盘必发，不受限）
+
 // ===== 北京时间工具 =====
 function bjParts() {
   const s = new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })
@@ -53,19 +68,28 @@ function bjKey() {
   return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`
 }
 
-// ===== 决策：本次该发什么 =====
-function decideType() {
-  const p = bjParts()
-  const t = p.hh + ':' + p.mm
-  if (t >= '09:00' && t < '09:10') return 'morning'   // 早报
-  if (t >= '10:00' && t < '10:10') return 'signal'    // 盘中①
-  if (t >= '13:30' && t < '13:40') return 'signal'    // 盘中②
-  if (t >= '14:45' && t < '14:55') return 'signal'    // 盘中③
-  if (t >= '15:05' && t < '15:15') return 'review'    // 复盘
-  return null
+// ===== 调度：事件驱动，交易时段内每5分钟都是检查点 =====
+// hhmm 形如 "0945"；参数化便于本地测试
+function decideType(hhmm) {
+  if (hhmm >= '0900' && hhmm < '0910') return 'morning'              // 早报
+  if (hhmm >= '1505' && hhmm < '1515') return 'review'               // 复盘
+  const isTrading = (hhmm >= '0930' && hhmm < '1135') || (hhmm >= '1300' && hhmm < '1505')
+  return isTrading ? 'signal' : null                                 // 盘中触发式
 }
 
-// ===== 防重标记 =====
+// ===== 状态：state.json（当天信号去重 + 发送计数 + 挂单提醒去重）=====
+const STATE_FILE = 'state.json'
+function loadState() {
+  let st = { date: bjKey(), sentSig: [], sentOrder: [], sentType: [], count: 0 }
+  try { st = { ...st, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) } } catch { /* 首次 */ }
+  if (st.date !== bjKey()) st = { date: bjKey(), sentSig: [], sentOrder: [], sentType: [], count: 0 }
+  return st
+}
+function saveState(st) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(st))
+}
+
+// ===== 防重标记（早报/复盘当天一次）=====
 const LAST_FILE = '.alert-last'
 function markSent(type) {
   const marker = bjKey() + ':' + type
@@ -74,6 +98,75 @@ function markSent(type) {
   if (last === marker) return false
   fs.writeFileSync(LAST_FILE, marker)
   return true
+}
+
+// ===== 挂单临近检测 =====
+// 返回 [{code, name, p, d, dist, price}]，dist=现价距挂单价百分比（正=接近）
+function checkOrders(reports, sentOrder) {
+  const alerts = []
+  const byCode = {}
+  for (const r of reports) if (!r.error) byCode[r.code] = r
+  for (const o of ORDERS) {
+    const r = byCode[o.code]
+    if (!r) continue
+    for (const lv of o.levels) {
+      const key = `${o.code}:${lv.p}`
+      if (sentOrder.includes(key)) continue
+      const dist = lv.d === 'buy' ? (r.price - lv.p) / lv.p : (lv.p - r.price) / lv.p
+      if (dist >= 0 && dist <= NEAR_RATIO) alerts.push({ code: o.code, name: o.name, p: lv.p, d: lv.d, dist, price: r.price })
+    }
+  }
+  return alerts
+}
+
+// ===== 信号收集（结构化：code+类型 用于去重）=====
+function collectSignals(reports) {
+  const out = []
+  for (const r of reports) {
+    if (r.error) continue
+    const sig = []
+    if (r.strongSignal?.strong) sig.push({ code: r.code, sig: '转强', html: `🔥 <b>${ESC(r.name)}</b> 转强信号：量 ${ESC(r.strongSignal.volStr)}，连阳站上MA5（现价 ${r.price.toFixed(3)}，${sign(r.quotePct)}%）` })
+    if (r.phase?.stage === '反转') sig.push({ code: r.code, sig: '反转', html: `↗️ <b>${ESC(r.name)}</b> 反转：突破20日高点（现价 ${r.price.toFixed(3)}）` })
+    if (r.combine?.verdict === '出货') sig.push({ code: r.code, sig: '出货', html: `⚠️ <b>${ESC(r.name)}</b> 出货：放量+主力流出（主力${fmtYi(r.fund?.main)}，散户${r.fund?.small != null ? fmtYi(r.fund.small) : '--'}），最危险（现价 ${r.price.toFixed(3)}）` })
+    if (r.fund?.verdict === '吸筹') sig.push({ code: r.code, sig: '吸筹', html: `🧲 <b>${ESC(r.name)}</b> 吸筹：跌+主力流入（主力${fmtYi(r.fund.main)}，散户${r.fund.small != null ? fmtYi(r.fund.small) : '--'}），跌着有人接（现价 ${r.price.toFixed(3)}）` })
+    if (r.phase?.stage === '止跌') sig.push({ code: r.code, sig: '止跌', html: `🛑 <b>${ESC(r.name)}</b> 止跌：缩量不创新低（现价 ${r.price.toFixed(3)}）` })
+    out.push(...sig)
+  }
+  return out
+}
+
+// ===== 时段侧重（盘中精简邮件）=====
+function periodFocus(hhmm) {
+  const t = parseInt(hhmm.slice(0, 2), 10) * 60 + parseInt(hhmm.slice(2), 10)
+  if (t < 11 * 60) return { title: '早盘 · 开盘异动', key: 'early' }
+  if (t < 14 * 60 + 20) return { title: '午后 · 趋势延续', key: 'mid' }
+  return { title: '尾盘 · 资金收尾', key: 'late' }
+}
+
+// focus 段内容：3只正式标的 + 持仓
+function focusHtml(reports, focus) {
+  const list = reports.slice(0, 3).concat(reports.find(r => r.code === 'sh588000')).filter((r, i, a) => r && !r.error && a.indexOf(r) === i)
+  if (!list.length) return ''
+  const lines = list.map(r => {
+    const parts = []
+    if (focus.key === 'early') {
+      const openGap = r.prevClose ? (r.dayOpen / r.prevClose - 1) * 100 : null
+      const vsOpen = r.dayOpen ? (r.price / r.dayOpen - 1) * 100 : null
+      parts.push(`开盘${openGap != null ? sign(openGap) + '%' : '--'}`)
+      parts.push(`现价${vsOpen != null ? (vsOpen >= 0 ? '高走' : '回落') + sign(vsOpen) + '%' : '--'}`)
+      parts.push(`量比${r.volume.volRatio ? r.volume.volRatio.toFixed(2) : '--'}`)
+    } else if (focus.key === 'mid') {
+      parts.push(`阶段 ${r.phase.stage}`)
+      parts.push(r.ma.aboveMA5 ? '站上MA5' : '跌破MA5')
+      parts.push(`主力5日 ${r.fund ? fmtYi(r.fund.main5d) : '--'}`)
+    } else {
+      parts.push(`主力今日 ${r.fund ? fmtYi(r.fund.main) : '--'}`)
+      parts.push(`散户 ${r.fund && r.fund.small != null ? fmtYi(r.fund.small) : '--'}`)
+      parts.push(r.ma.aboveMA5 ? '收在MA5上方' : '收在MA5下方')
+    }
+    return `<p style="margin:3px 0;font-size:13px"><b>${ESC(r.name)}</b> ${r.price.toFixed(3)}（${sign(r.quotePct)}%） · ${parts.join(' · ')}</p>`
+  }).join('')
+  return `<h3 style="margin-top:20px">${focus.title}</h3>${lines}`
 }
 
 // ===== 数据拉取 =====
@@ -93,6 +186,8 @@ async function fetchAll() {
       rep.quotePct = rep.price && klines.length > 1
         ? (klines[klines.length - 1].close / klines[klines.length - 2].close - 1) * 100
         : null
+      rep.dayOpen = klines[klines.length - 1].open
+      rep.prevClose = klines.length > 1 ? klines[klines.length - 2].close : null
       reports.push(rep)
     } catch (e) {
       reports.push({ code: it.code, name: it.name, error: e.message })
@@ -176,12 +271,54 @@ function reportRows(reports) {
   }).join('')
 }
 
-function buildHtml(type, reports, news, signals) {
+// 挂单提醒 HTML
+function orderHtml(orderAlerts) {
+  if (!orderAlerts.length) return ''
+  const dirText = { buy: '买入', sell: '卖出' }
+  const lines = orderAlerts.map(o =>
+    `<p style="margin:4px 0;font-size:13px">🎯 <b>${ESC(o.name)}</b> 距${dirText[o.d]}价 <b>${o.p.toFixed(3)}</b> 还有 <b style="color:${RED}">${(o.dist * 100).toFixed(1)}%</b>（现价 ${o.price.toFixed(3)}）——准备操作</p>`
+  ).join('')
+  return `<h3 style="margin-top:20px">🎯 挂单临近提醒</h3>${lines}`
+}
+
+// 盘中持仓速览（精简邮件专用）：一行
+function heldLine(r) {
+  if (!r || r.error) return ''
+  const pct = r.quotePct ?? r.price
+  return `<p style="margin:4px 0;font-size:13px">⭐ <b>持仓 ${ESC(r.name)}</b> ${r.price.toFixed(3)}（${sign(pct)}%） · ${stageBadge(r.phase.stage)} · 量比${r.volume.volRatio ? r.volume.volRatio.toFixed(2) : '--'} · 主力${r.fund ? fmtYi(r.fund.main) : '--'} · 散户${r.fund && r.fund.small != null ? fmtYi(r.fund.small) : '--'}</p>`
+}
+
+function buildHtml(type, reports, news, signals, orderAlerts, focus) {
   const p = bjParts()
   const typeName = { morning: '早报', review: '复盘', signal: '盘中信号' }[type]
   const dateStr = `${p.m}月${p.day}日 周${p.week}`
+  const headerColor = { morning: '#1a73e8', review: '#8e44ad', signal: '#e67e22' }[type]
 
-  // 大盘情绪：3只正式标的
+  const head = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;max-width:720px;margin:0 auto;padding:20px;color:#333">
+  <div style="background:${headerColor};color:#fff;padding:14px 20px;border-radius:10px">
+    <h2 style="margin:0;font-size:18px">📈 ETF量能${typeName} · ${dateStr}</h2>
+    <p style="margin:6px 0 0;font-size:13px;opacity:.9">自动分析 · 数据仅供参考</p>
+  </div>`
+
+  const foot = `<p style="margin-top:28px;font-size:11px;color:#8e99a4;border-top:1px solid #eee;padding-top:10px">
+    信号口径：转强=量≥5500万(科创50)/25日均量×1.3 + 连续2天收阳 + 站稳MA5 · 主力/散户为按单笔成交金额估算的代理指标<br>
+    本邮件由 GitHub Actions 自动生成，不构成投资建议
+  </p></body></html>`
+
+  // ===== 盘中精简邮件 =====
+  if (type === 'signal') {
+    const held = reports.find(r => r.code === 'sh588000')
+    return head +
+      (focus ? focusHtml(reports, focus) : '') +
+      (signals.length ? `<h3 style="margin-top:20px">🔔 新信号</h3>${signals.map(s => `<p style="font-size:13px;margin:4px 0">${s.html}</p>`).join('')}` : '') +
+      orderHtml(orderAlerts) +
+      heldLine(held) +
+      foot
+  }
+
+  // ===== 全量邮件（早报/复盘）=====
   const formal = reports.slice(0, 3)
   const formalOk = formal.filter(r => !r.error)
   const avg = formalOk.length ? formalOk.reduce((a, r) => a + (r.quotePct ?? 0), 0) / formalOk.length : null
@@ -190,7 +327,6 @@ function buildHtml(type, reports, news, signals) {
 
   // 持仓重点：科创50（唯一持仓）
   const held = reports.find(r => r.code === 'sh588000')
-
   let heldHtml = ''
   if (held && !held.error) {
     heldHtml = `
@@ -219,23 +355,15 @@ function buildHtml(type, reports, news, signals) {
   if (signals.length) {
     signalHtml = `
     <h3 style="margin-top:24px">🔔 盘中关键信号</h3>
-    ${signals.map(s => `<p style="font-size:13px;margin:4px 0">${s}</p>`).join('')}`
+    ${signals.map(s => `<p style="font-size:13px;margin:4px 0">${s.html}</p>`).join('')}`
   }
 
-  const headerColor = { morning: '#1a73e8', review: '#8e44ad', signal: '#e67e22' }[type]
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;max-width:720px;margin:0 auto;padding:20px;color:#333">
-  <div style="background:${headerColor};color:#fff;padding:14px 20px;border-radius:10px">
-    <h2 style="margin:0;font-size:18px">📈 ETF量能${typeName} · ${dateStr}</h2>
-    <p style="margin:6px 0 0;font-size:13px;opacity:.9">自动分析 · 数据仅供参考</p>
-  </div>
-
+  return head + `
   <p style="font-size:13px;margin-top:16px">大盘情绪：<b style="color:${moodColor};font-size:15px">${moodText}</b>
     <span style="color:#8e99a4">${formalOk.map(r => `${ESC(r.name)} ${sign(r.quotePct)}%`).join(' · ')}</span></p>
 
   ${signalHtml}
+  ${orderHtml(orderAlerts)}
   ${heldHtml}
 
   <h3 style="margin-top:24px">📋 全部标的速览</h3>
@@ -250,28 +378,35 @@ function buildHtml(type, reports, news, signals) {
 
   <h3 style="margin-top:24px">📰 要闻（利好/利空）</h3>
   ${newsHtml(news)}
-
-  <p style="margin-top:28px;font-size:11px;color:#8e99a4;border-top:1px solid #eee;padding-top:10px">
-    信号口径：转强=量≥5500万(科创50)/25日均量×1.3 + 连续2天收阳 + 站稳MA5 · 主力/散户为按单笔成交金额估算的代理指标<br>
-    本邮件由 GitHub Actions 自动生成，不构成投资建议
-  </p>
-</body></html>`
+  ${foot}`
 }
 
 // ===== 主流程 =====
 async function main() {
-  // ALERT_TYPE 环境变量可强制类型（本地测试用）：morning / signal / review
-  const type = process.env.ALERT_TYPE || decideType()
+  const now = bjParts()
+  const hhmm = now.hh + now.mm
+  const type = process.env.ALERT_TYPE || decideType(hhmm)
   if (!type) {
     console.log('非发送时点，跳过')
     process.exit(0)
   }
-  if (!markSent(type)) {
-    console.log(`今天已发过 ${type}，跳过`)
+
+  const st = loadState()
+  const p = bjParts()
+  const dateStr = `${p.m}月${p.day}日 周${p.week}`
+
+  // 早报/复盘：当天一次（.alert-last 防重）
+  if (type !== 'signal') {
+    if (!markSent(type)) {
+      console.log(`今天已发过 ${type}，跳过`)
+      process.exit(0)
+    }
+  } else if (st.count >= MAX_DAILY) {
+    console.log(`今天已发 ${st.count} 条，达到上限 ${MAX_DAILY}，跳过`)
     process.exit(0)
   }
 
-  console.log(`开始分析（${type}）...`)
+  console.log(`开始分析（${type} ${hhmm}）...`)
   const reports = await fetchAll()
 
   // 假日判断：K线最后日期距今天 >3天
@@ -284,24 +419,20 @@ async function main() {
     }
   }
 
-  // 信号收集（早报/复盘也列信号，盘中只有信号邮件才发）
-  const signals = []
-  for (const r of reports) {
-    if (r.error) continue
-    if (r.strongSignal?.strong) signals.push(`🔥 <b>${ESC(r.name)}</b> 转强信号：量 ${ESC(r.strongSignal.volStr)}，连阳站上MA5（现价 ${r.price.toFixed(3)}，${sign(r.quotePct)}%）`)
-    if (r.phase?.stage === '反转') signals.push(`↗️ <b>${ESC(r.name)}</b> 反转：突破20日高点（现价 ${r.price.toFixed(3)}）`)
-    if (r.combine?.verdict === '出货') signals.push(`⚠️ <b>${ESC(r.name)}</b> 出货：放量+主力流出（主力${fmtYi(r.fund?.main)}，散户${r.fund?.small != null ? fmtYi(r.fund.small) : '--'}），最危险（现价 ${r.price.toFixed(3)}）`)
-    if (r.fund?.verdict === '吸筹') signals.push(`🧲 <b>${ESC(r.name)}</b> 吸筹：跌+主力流入（主力${fmtYi(r.fund.main)}，散户${r.fund.small != null ? fmtYi(r.fund.small) : '--'}），跌着有人接（现价 ${r.price.toFixed(3)}）`)
-    if (r.phase?.stage === '止跌') signals.push(`🛑 <b>${ESC(r.name)}</b> 止跌：缩量不创新低（现价 ${r.price.toFixed(3)}）`)
-  }
+  // 信号：盘中只发"新出现"的（当天已发过的同标的同信号不再发）
+  const allSignals = collectSignals(reports)
+  const freshSignals = allSignals.filter(s => !st.sentSig.includes(s.code + ':' + s.sig))
 
-  // 盘中信号：无信号不发邮件
-  if (type === 'signal' && !signals.length) {
-    console.log('盘中无关键信号，不发送')
+  // 挂单临近（每单当天提醒一次）
+  const orderAlerts = checkOrders(reports, st.sentOrder)
+
+  // 盘中：无新信号且无挂单临近 → 不发
+  if (type === 'signal' && !freshSignals.length && !orderAlerts.length) {
+    console.log('盘中无新信号、无挂单临近，不发送')
     process.exit(0)
   }
 
-  // 新闻（早报/复盘带，盘中信号不带）
+  // 新闻（早报/复盘带，盘中不带）
   let news = []
   if (type !== 'signal') {
     const groups = await Promise.all([
@@ -312,12 +443,21 @@ async function main() {
     news = groups.flat()
   }
 
-  const html = buildHtml(type, reports, news, signals)
-  const p = bjParts()
+  // 盘中：当日已发信号也列出（标注"延续"），让持仓者知道状态
+  const focus = type === 'signal' ? periodFocus(hhmm) : null
+  const html = buildHtml(type, reports, news, freshSignals, orderAlerts, focus)
   const typeName = { morning: '早报', review: '复盘', signal: '盘中信号' }[type]
   fs.writeFileSync('mail.html', html)
-  fs.writeFileSync('mail_subject.txt', `ETF量能${typeName} ${p.m}月${p.day}日 ${signals.length ? `(${signals.length}个信号)` : ''}`)
-  console.log(`已生成邮件：${typeName}，信号 ${signals.length} 条，标的 ${reports.length} 只`)
+  fs.writeFileSync('mail_subject.txt', `ETF量能${typeName} ${p.m}月${p.day}日 ${freshSignals.length ? `(${freshSignals.length}个新信号)` : orderAlerts.length ? '(挂单临近)' : ''}`)
+  console.log(`已生成邮件：${typeName}，新信号 ${freshSignals.length} 条，挂单提醒 ${orderAlerts.length} 条`)
+
+  // 发送成功前不更新状态；由 workflow 调用方在发送后执行 saveState 的后续（通过 git commit）
+  // 但 state 需要发送后才算数——这里把本次内容记入，workflow 发送失败也不会重发（宁可少发）
+  if (type !== 'signal' && !st.sentType.includes(type)) st.sentType.push(type)
+  for (const s of freshSignals) st.sentSig.push(s.code + ':' + s.sig)
+  for (const o of orderAlerts) st.sentOrder.push(o.code + ':' + o.p)
+  st.count += 1
+  saveState(st)
 }
 
 if (!process.env.SKIP_MAIN) {
@@ -326,4 +466,4 @@ if (!process.env.SKIP_MAIN) {
     process.exit(1)
   })
 }
-export { buildHtml }
+export { buildHtml, decideType, checkOrders, collectSignals }
