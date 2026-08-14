@@ -106,7 +106,7 @@ function markSent(type) {
 }
 
 // ===== 挂单临近检测 =====
-// 返回 [{code, name, p, d, dist, price}]，dist=现价距挂单价百分比（正=接近）
+// 返回 [{code, name, p, d, dist, price}]，dist=现价距挂单价百分比（正=在上方接近/超过）
 function checkOrders(reports, sentOrder) {
   const alerts = []
   const byCode = {}
@@ -117,8 +117,11 @@ function checkOrders(reports, sentOrder) {
     for (const lv of o.levels) {
       const key = `${o.code}:${lv.p}`
       if (sentOrder.includes(key)) continue
-      const dist = lv.d === 'buy' ? (r.price - lv.p) / lv.p : (lv.p - r.price) / lv.p
-      if (dist >= 0 && dist <= NEAR_RATIO) alerts.push({ code: o.code, name: o.name, p: lv.p, d: lv.d, dist, price: r.price })
+      const rel = (r.price - lv.p) / lv.p
+      // buy：现价在上方接近买入价（跌破=已成交，不提醒）
+      // sell：现价到达或超过卖出目标价都提醒（跳空直接越过不漏报）
+      const hit = lv.d === 'buy' ? rel >= 0 && rel <= NEAR_RATIO : rel >= -NEAR_RATIO
+      if (hit) alerts.push({ code: o.code, name: o.name, p: lv.p, d: lv.d, dist: Math.abs(rel), price: r.price })
     }
   }
   return alerts
@@ -285,7 +288,7 @@ function newsHtml(news) {
 function reportRows(reports) {
   return reports.map(r => {
     if (r.error) return `<tr><td>${ESC(r.name)}</td><td colspan="8" style="color:#f23645">${ESC(r.error)}</td></tr>`
-    const pct = r.quotePct ?? r.price
+    const pct = r.quotePct ?? null
     const v = r.volume
     const fundMain = r.fund?.main
     const main5 = r.fund?.main5d
@@ -316,16 +319,20 @@ function warnHtml(dataWarn) {
 function orderHtml(orderAlerts) {
   if (!orderAlerts.length) return ''
   const dirText = { buy: '买入', sell: '卖出' }
-  const lines = orderAlerts.map(o =>
-    `<p style="margin:4px 0;font-size:13px">🎯 <b>${ESC(o.name)}</b> 距${dirText[o.d]}价 <b>${o.p.toFixed(3)}</b> 还有 <b style="color:${RED}">${(o.dist * 100).toFixed(1)}%</b>（现价 ${o.price.toFixed(3)}）——准备操作</p>`
-  ).join('')
+  const lines = orderAlerts.map(o => {
+    const reached = o.d === 'sell' && o.price >= o.p
+    const distText = reached
+      ? `<b style="color:${RED}">已到达/超过卖出价</b>`
+      : `还有 <b style="color:${RED}">${(o.dist * 100).toFixed(1)}%</b>`
+    return `<p style="margin:4px 0;font-size:13px">🎯 <b>${ESC(o.name)}</b> 距${dirText[o.d]}价 <b>${o.p.toFixed(3)}</b> ${distText}（现价 ${o.price.toFixed(3)}）——准备操作</p>`
+  }).join('')
   return `<h3 style="margin-top:20px">🎯 挂单临近提醒</h3>${lines}`
 }
 
 // 盘中持仓速览（精简邮件专用）：一行
 function heldLine(r) {
   if (!r || r.error) return ''
-  const pct = r.quotePct ?? r.price
+  const pct = r.quotePct ?? null
   return `<p style="margin:4px 0;font-size:13px">⭐ <b>持仓 ${ESC(r.name)}</b> ${r.price.toFixed(3)}（${sign(pct)}%） · ${stageBadge(r.phase.stage)} · 量比${r.volume.volRatio ? r.volume.volRatio.toFixed(2) : '--'} · 主力${r.fund ? fmtYi(r.fund.main) : '--'} · 散户${r.fund && r.fund.small != null ? fmtYi(r.fund.small) : '--'}</p>`
 }
 
@@ -471,7 +478,13 @@ async function main() {
   const orderAlerts = checkOrders(reports, st.sentOrder)
 
   // 盘中：无新信号且无挂单临近 → 不发
+  // 但必须刷新 active（信号消失即移除，否则再现会被旧指纹挡住漏报）
   if (type === 'signal' && !freshSignals.length && !orderAlerts.length) {
+    const nextActive = allSignals.map(s => s.code + ':' + s.sig)
+    if (nextActive.join() !== st.active.join()) {
+      st.active = nextActive
+      saveState(st)
+    }
     console.log('盘中无新信号、无挂单临近，不发送')
     process.exit(0)
   }
