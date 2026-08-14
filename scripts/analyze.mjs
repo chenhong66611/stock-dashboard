@@ -15,7 +15,7 @@
  * 输出：mail.html（邮件正文）+ mail_subject.txt；无需发送时不生成
  */
 import fs from 'node:fs'
-import { buildReport, tagNews, cleanTitle, fmtYi, fmtVolHand } from '../src/services/analysisCore.js'
+import { buildReport, tagNews, cleanTitle, fmtYi, fmtVolHand, judgePhase, calcMA, calcVolRatio } from '../src/services/analysisCore.js'
 import { fetchKline, fetchFundFlow } from '../src/services/volumeAnalysis.js'
 
 // 标的列表（与前端 stockApi.js 保持一致）
@@ -219,6 +219,19 @@ async function fetchAll() {
         continue
       }
       const rep = buildReport(it.code, it.name, null, klines, fund)
+      // 昨日对照（变动一览用）：用去掉今日的K线窗口重算昨日阶段 + 昨日主力
+      rep.yDay = (() => {
+        const yk = klines.slice(0, -1)
+        if (yk.length < 20) return { date: yk[yk.length - 1]?.date ?? null, stage: null, main: null }
+        const yc = yk.map(k => k.close)
+        const yv = yk.map(k => k.volume)
+        const yma = { ma5: calcMA(yc, 5), ma10: calcMA(yc, 10), ma20: calcMA(yc, 20) }
+        return {
+          date: yk[yk.length - 1].date,
+          stage: judgePhase(yk, yma, calcVolRatio(yv)).stage,
+          main: fund.length > 1 ? (fund[fund.length - 2]?.main ?? null) : null,
+        }
+      })()
       rep.quotePct = rep.price && klines.length > 1
         ? (klines[klines.length - 1].close / klines[klines.length - 2].close - 1) * 100
         : null
@@ -329,6 +342,26 @@ function orderHtml(orderAlerts) {
   return `<h3 style="margin-top:20px">🎯 挂单临近提醒</h3>${lines}`
 }
 
+// ===== 变动一览（昨日 → 今日，邮件末尾）：阶段 + 主力 =====
+function changeHtml(reports, list) {
+  const rows = list.filter(r => !r.error && r.yDay)
+  if (!rows.length) return ''
+  const tDate = (rows[0].date || '').slice(5)
+  const yDate = (rows[0].yDay.date || '').slice(5)
+  const lines = rows.map(r => {
+    const y = r.yDay
+    const stageNow = r.phase.stage
+    const stageChanged = y.stage && stageNow && y.stage !== stageNow
+    const stageText = `<b style="color:${stageChanged ? '#1a73e8' : GRAY}">${ESC(y.stage ?? '--')} → ${ESC(stageNow ?? '--')}</b>`
+    const mainNow = r.fund?.main
+    const mainChanged = y.main != null && mainNow != null && y.main !== mainNow
+    const mainCol = mainChanged ? (mainNow > y.main ? RED : GREEN) : GRAY
+    const mainText = `<b style="color:${mainCol}">${y.main != null ? fmtYi(y.main) : '--'} → ${mainNow != null ? fmtYi(mainNow) : '--'}</b>`
+    return `<p style="margin:4px 0;font-size:13px"><b>${ESC(r.name)}</b> · 阶段 ${stageText} · 主力 ${mainText}</p>`
+  }).join('')
+  return `<h3 style="margin-top:24px">📊 变动一览（${yDate} → ${tDate}）</h3>${lines}`
+}
+
 // 盘中持仓速览（精简邮件专用）：一行
 function heldLine(r) {
   if (!r || r.error) return ''
@@ -358,11 +391,14 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
   // ===== 盘中精简邮件 =====
   if (type === 'signal') {
     const held = reports.find(r => r.code === 'sh588000')
+    // 变动一览聚焦：3只正式 + 持仓
+    const focusList = reports.slice(0, 3).concat(held).filter((r, i, a) => r && !r.error && a.indexOf(r) === i)
     return head + warnHtml(dataWarn) +
       (focus ? focusHtml(reports, focus) : '') +
       (signals.length ? `<h3 style="margin-top:20px">🔔 新信号</h3>${signals.map(s => `<p style="font-size:13px;margin:4px 0">${s.html}</p>`).join('')}` : '') +
       orderHtml(orderAlerts) +
       heldLine(held) +
+      changeHtml(reports, focusList) +
       foot
   }
 
@@ -426,6 +462,8 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
 
   <h3 style="margin-top:24px">📰 要闻（利好/利空）</h3>
   ${newsHtml(news)}
+
+  ${changeHtml(reports, reports)}
   ${foot}`
 }
 
