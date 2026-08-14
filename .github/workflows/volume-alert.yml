@@ -34,11 +34,13 @@ jobs:
             node scripts/analyze.mjs
           fi
 
-      # 发送邮件
+      # 发送邮件（Outlook发件 → QQ邮箱收件）
       - name: 发送邮件
         if: hashFiles('mail.html') != ''
         env:
-          SMTP_USER: '3267254907@qq.com'
+          SMTP_HOST: 'smtp.office365.com'
+          SMTP_PORT: '587'
+          SMTP_USER: 'C15623285628@outlook.com'
           SMTP_CODE: ${{ secrets.SMTP_CODE }}
           SMTP_TO: '3267254907@qq.com'
         run: python scripts/sendmail.py
