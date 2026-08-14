@@ -73,9 +73,14 @@ function bjKey() {
 
 // ===== 调度：事件驱动，交易时段内每5分钟都是检查点 =====
 // hhmm 形如 "0945"；参数化便于本地测试
-function decideType(hhmm) {
-  if (hhmm >= '0900' && hhmm < '0910') return 'morning'              // 早报
-  if (hhmm >= '1505' && hhmm < '1515') return 'review'               // 复盘
+// 窗口放宽原因：GitHub Actions schedule 不保证按时执行（高负载时跳过/延迟，
+// 实测一天 55+ 个检查点只执行了 4 次）。早报窗口 09:00-10:00、复盘 15:05 后，
+// 只要当天还没发过（st.sentType 防重），任何迟到的 run 都能补发；
+// 已发过则让位给盘中 signal 检查，不抢占。
+function decideType(hhmm, st) {
+  const sent = st?.sentType || []
+  if (!sent.includes('morning') && hhmm >= '0900' && hhmm < '1000') return 'morning'
+  if (!sent.includes('review') && hhmm >= '1505') return 'review'
   const isTrading = (hhmm >= '0930' && hhmm < '1135') || (hhmm >= '1300' && hhmm < '1505')
   return isTrading ? 'signal' : null                                 // 盘中触发式
 }
@@ -471,13 +476,13 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
 async function main() {
   const now = bjParts()
   const hhmm = now.hh + now.mm
-  const type = process.env.ALERT_TYPE || decideType(hhmm)
+  const st = loadState()
+  const type = process.env.ALERT_TYPE || decideType(hhmm, st)
   if (!type) {
     console.log('非发送时点，跳过')
     process.exit(0)
   }
 
-  const st = loadState()
   const p = bjParts()
 
   // 早报/复盘：当天一次（.alert-last 防重）

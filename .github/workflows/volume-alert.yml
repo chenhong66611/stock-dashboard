@@ -1,9 +1,11 @@
 name: 量能分析推送
 
 on:
-  # 北京时间 9:00-15:55 每5分钟（UTC = 北京-8）
+  # 北京时间 9:00-16:55 每5分钟（UTC = 北京-8）
+  # 延长到 16:55：GitHub schedule 高负载时跳过/延迟（实测 15:05 复盘检查点整段被跳），
+  # 多留 1 小时让迟到的 run 能兜底补发复盘
   schedule:
-    - cron: '*/5 1-7 * * 1-5'
+    - cron: '*/5 1-8 * * 1-5'
   # 手动触发（调试用）：force 填 morning / signal / review 可强制发对应邮件
   workflow_dispatch:
     inputs:
