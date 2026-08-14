@@ -48,7 +48,9 @@ const ORDERS = [
   { code: 'sz159766', name: '旅游', levels: [{ p: 0.547, d: 'buy' }] },
 ]
 const NEAR_RATIO = 0.01   // 距挂单价 ≤1% 触发提醒
-const MAX_DAILY = 12      // 每天发送总上限（早报/复盘必发，不受限）
+// 每天发送总上限：自然天花板约63条（55个信号指纹+8个挂单），60足够放行全部真信号
+// 超过60说明状态去重失效（如state.json推送失败），保险丝兜底防刷屏
+const MAX_DAILY = 60      // 早报/复盘必发，不受限
 
 // ===== 北京时间工具 =====
 function bjParts() {
