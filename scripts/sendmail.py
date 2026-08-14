@@ -7,9 +7,9 @@ import ssl
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
-# 默认 Outlook（GitHub 服务器在境外，连 smtp.office365.com 稳定）
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.office365.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+# 默认 Gmail（GitHub 服务器在境外，连 smtp.gmail.com 稳定）
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
 SMTP_USER = os.environ["SMTP_USER"]          # 发件邮箱
 SMTP_CODE = os.environ["SMTP_CODE"]          # 应用密码 / 授权码（GitHub Secrets 注入）
 SMTP_TO = os.environ.get("SMTP_TO", SMTP_USER)  # 收件邮箱，默认发给自己
