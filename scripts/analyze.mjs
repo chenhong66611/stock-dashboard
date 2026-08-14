@@ -79,12 +79,14 @@ function decideType(hhmm) {
   return isTrading ? 'signal' : null                                 // 盘中触发式
 }
 
-// ===== 状态：state.json（当天信号去重 + 发送计数 + 挂单提醒去重）=====
+// ===== 状态：state.json =====
+// active：当前仍在提醒中的信号指纹（信号消失即移除，再出现会再提醒）
+// sentOnce：当天发过的信号指纹（区分"首次完整提醒"和"消失后重现的简短提醒"）
 const STATE_FILE = 'state.json'
 function loadState() {
-  let st = { date: bjKey(), sentSig: [], sentOrder: [], sentType: [], count: 0 }
+  let st = { date: bjKey(), active: [], sentOnce: [], sentOrder: [], sentType: [], count: 0 }
   try { st = { ...st, ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) } } catch { /* 首次 */ }
-  if (st.date !== bjKey()) st = { date: bjKey(), sentSig: [], sentOrder: [], sentType: [], count: 0 }
+  if (st.date !== bjKey()) st = { date: bjKey(), active: [], sentOnce: [], sentOrder: [], sentType: [], count: 0 }
   return st
 }
 function saveState(st) {
@@ -135,6 +137,22 @@ function collectSignals(reports) {
     out.push(...sig)
   }
   return out
+}
+
+// ===== 信号过滤：只发"新出现"的；消失后再出现 → 简短提醒（🔄）=====
+export function filterSignals(allSignals, st, reports) {
+  const activeKeys = new Set(st.active)
+  const sentOnceSet = new Set(st.sentOnce)
+  const fresh = allSignals.filter(s => !activeKeys.has(s.code + ':' + s.sig))
+  for (const s of fresh) {
+    if (sentOnceSet.has(s.code + ':' + s.sig)) {
+      const name = s.html.match(/<b>([^<]+)<\/b>/)?.[1] ?? ''
+      const rep = reports.find(r => r.code === s.code)
+      const px = rep && rep.price != null ? rep.price.toFixed(3) : '--'
+      s.html = `🔄 <b>${name}</b> 再度${s.sig}（现价 ${px}）`
+    }
+  }
+  return fresh
 }
 
 // ===== 时段侧重（盘中精简邮件）=====
@@ -421,9 +439,9 @@ async function main() {
     }
   }
 
-  // 信号：盘中只发"新出现"的（当天已发过的同标的同信号不再发）
+  // 信号：只发"新出现"的（正在提醒中的不重复）；信号消失后再出现 → 再提醒（简短版）
   const allSignals = collectSignals(reports)
-  const freshSignals = allSignals.filter(s => !st.sentSig.includes(s.code + ':' + s.sig))
+  const freshSignals = filterSignals(allSignals, st, reports)
 
   // 挂单临近（每单当天提醒一次）
   const orderAlerts = checkOrders(reports, st.sentOrder)
@@ -445,18 +463,19 @@ async function main() {
     news = groups.flat()
   }
 
-  // 盘中：当日已发信号也列出（标注"延续"），让持仓者知道状态
+  // 盘中发新信号（精简）；早报/复盘发当天全部活跃信号（总结）
+  const showSignals = type === 'signal' ? freshSignals : allSignals
   const focus = type === 'signal' ? periodFocus(hhmm) : null
-  const html = buildHtml(type, reports, news, freshSignals, orderAlerts, focus)
+  const html = buildHtml(type, reports, news, showSignals, orderAlerts, focus)
   const typeName = { morning: '早报', review: '复盘', signal: '盘中信号' }[type]
   fs.writeFileSync('mail.html', html)
-  fs.writeFileSync('mail_subject.txt', `ETF量能${typeName} ${p.m}月${p.day}日 ${freshSignals.length ? `(${freshSignals.length}个新信号)` : orderAlerts.length ? '(挂单临近)' : ''}`)
+  fs.writeFileSync('mail_subject.txt', `ETF量能${typeName} ${p.m}月${p.day}日 ${showSignals.length ? `(${showSignals.length}个信号)` : orderAlerts.length ? '(挂单临近)' : ''}`)
   console.log(`已生成邮件：${typeName}，新信号 ${freshSignals.length} 条，挂单提醒 ${orderAlerts.length} 条`)
 
-  // 发送成功前不更新状态；由 workflow 调用方在发送后执行 saveState 的后续（通过 git commit）
-  // 但 state 需要发送后才算数——这里把本次内容记入，workflow 发送失败也不会重发（宁可少发）
+  // 状态更新：active=当前全部活跃信号（消失自动移除，再出现会再提醒）
   if (type !== 'signal' && !st.sentType.includes(type)) st.sentType.push(type)
-  for (const s of freshSignals) st.sentSig.push(s.code + ':' + s.sig)
+  st.active = allSignals.map(s => s.code + ':' + s.sig)
+  for (const s of freshSignals) st.sentOnce.push(s.code + ':' + s.sig)
   for (const o of orderAlerts) st.sentOrder.push(o.code + ':' + o.p)
   st.count += 1
   saveState(st)
