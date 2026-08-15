@@ -38,15 +38,15 @@ const WEEK_CN = ['日', '一', '二', '三', '四', '五', '六']
 // ===== 挂单配置（只提醒价格临近，不带份数/金额）=====
 // levels: 每档 { p: 挂单价, d: 'buy'买入档 | 'sell'卖出档 }
 const ORDERS = [
-  { code: 'sh588000', name: '科创50ETF', levels: [{ p: 1.55, d: 'buy' }, { p: 2.02, d: 'sell' }] },
+  { code: 'sh588000', name: '科创50ETF', held: true, levels: [{ p: 1.55, d: 'buy' }, { p: 2.02, d: 'sell' }] }, // 已持仓
   { code: 'sz159755', name: '电池', levels: [{ p: 0.93, d: 'buy' }] },
   { code: 'sh515790', name: '光伏', levels: [{ p: 0.83, d: 'buy' }] },
-  { code: 'sz159869', name: '游戏', levels: [{ p: 1.10, d: 'buy' }, { p: 1.30, d: 'sell' }] }, // 已持仓(8/14)，加卖出目标提醒
+  { code: 'sz159869', name: '游戏', held: true, levels: [{ p: 1.10, d: 'buy' }, { p: 1.30, d: 'sell' }] }, // 已持仓(8/14)，加卖出目标提醒
   { code: 'sh515250', name: '智能汽车', levels: [{ p: 0.945, d: 'buy' }, { p: 0.928, d: 'buy' }] },
   { code: 'sh512710', name: '军工', levels: [{ p: 0.615, d: 'buy' }] },
   { code: 'sz159996', name: '家电', levels: [{ p: 1.392, d: 'buy' }] },
   { code: 'sz159766', name: '旅游', levels: [{ p: 0.547, d: 'buy' }] },
-  { code: 'sh512980', name: '传媒', levels: [{ p: 0.98, d: 'sell' }] }, // 已持仓(8/14)，卖出目标提醒
+  { code: 'sh512980', name: '传媒', held: true, levels: [{ p: 0.98, d: 'sell' }] }, // 已持仓(8/14)，卖出目标提醒
 ]
 const NEAR_RATIO = 0.01   // 距挂单价 ≤1% 触发提醒
 // 每天发送总上限：自然天花板约63条（55个信号指纹+8个挂单），60足够放行全部真信号
@@ -367,11 +367,13 @@ function changeHtml(reports, list) {
   return `<h3 style="margin-top:24px">📊 变动一览（${yDate} → ${tDate}）</h3>${lines}`
 }
 
-// 盘中持仓速览（精简邮件专用）：一行
-function heldLine(r) {
-  if (!r || r.error) return ''
-  const pct = r.quotePct ?? null
-  return `<p style="margin:4px 0;font-size:13px">⭐ <b>持仓 ${ESC(r.name)}</b> ${r.price.toFixed(3)}（${sign(pct)}%） · ${stageBadge(r.phase.stage)} · 量比${r.volume.volRatio ? r.volume.volRatio.toFixed(2) : '--'} · 主力${r.fund ? fmtYi(r.fund.main) : '--'} · 散户${r.fund && r.fund.small != null ? fmtYi(r.fund.small) : '--'}</p>`
+// 盘中持仓速览（精简邮件专用）：每只持仓一行
+function heldLine(heldReports) {
+  if (!heldReports?.length) return ''
+  return heldReports.map(r => {
+    const pct = r.quotePct ?? null
+    return `<p style="margin:4px 0;font-size:13px">⭐ <b>持仓 ${ESC(r.name)}</b> ${r.price.toFixed(3)}（${sign(pct)}%） · ${stageBadge(r.phase.stage)} · 量比${r.volume.volRatio ? r.volume.volRatio.toFixed(2) : '--'} · 主力${r.fund ? fmtYi(r.fund.main) : '--'} · 散户${r.fund && r.fund.small != null ? fmtYi(r.fund.small) : '--'}</p>`
+  }).join('')
 }
 
 function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
@@ -395,14 +397,15 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
 
   // ===== 盘中精简邮件 =====
   if (type === 'signal') {
-    const held = reports.find(r => r.code === 'sh588000')
+    // 持仓：所有已持仓标的（科创50/游戏/传媒）
+    const heldAll = ORDERS.filter(o => o.held).map(o => reports.find(r => r.code === o.code)).filter(r => r && !r.error)
     // 变动一览聚焦：3只正式 + 持仓
-    const focusList = reports.slice(0, 3).concat(held).filter((r, i, a) => r && !r.error && a.indexOf(r) === i)
+    const focusList = reports.slice(0, 3).concat(heldAll).filter((r, i, a) => r && !r.error && a.indexOf(r) === i)
     return head + warnHtml(dataWarn) +
       (focus ? focusHtml(reports, focus) : '') +
       (signals.length ? `<h3 style="margin-top:20px">🔔 新信号</h3>${signals.map(s => `<p style="font-size:13px;margin:4px 0">${s.html}</p>`).join('')}` : '') +
       orderHtml(orderAlerts) +
-      heldLine(held) +
+      heldLine(heldAll) +
       changeHtml(reports, focusList) +
       foot
   }
@@ -414,18 +417,14 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
   const moodText = avg == null ? '数据不足' : avg > 0.3 ? '偏暖 🔥' : avg < -0.3 ? '偏冷 🧊' : '中性 ⚖️'
   const moodColor = avg == null ? GRAY : avg > 0.3 ? RED : avg < -0.3 ? GREEN : GRAY
 
-  // 持仓重点：科创50（唯一持仓）
-  const held = reports.find(r => r.code === 'sh588000')
+  // 持仓重点：所有已持仓标的（科创50/游戏/传媒），动态生成
+  const heldAll = ORDERS.filter(o => o.held).map(o => reports.find(r => r.code === o.code)).filter(r => r && !r.error)
   let heldHtml = ''
-  if (held && !held.error) {
-    heldHtml = `
-    <h3 style="margin-top:24px">⭐ 持仓：科创50ETF</h3>
-    <table style="border-collapse:collapse;width:100%;font-size:13px;background:#fafbfc">
-      <tr style="background:#f0f2f5">
-        <th style="padding:6px 8px;text-align:left">阶段</th><th style="padding:6px 8px">量比/量价</th><th style="padding:6px 8px">MA5</th><th style="padding:6px 8px">MA10</th><th style="padding:6px 8px">MA20</th>
-        <th style="padding:6px 8px">241分位</th><th style="padding:6px 8px">主力今日</th><th style="padding:6px 8px">散户今日</th><th style="padding:6px 8px">5日累计</th>
-      </tr>
+  if (heldAll.length) {
+    const heldTitle = heldAll.map(r => ESC(r.name)).join('、')
+    const heldRows = heldAll.map(held => `
       <tr style="border-bottom:1px solid #eee">
+        <td style="padding:6px 8px;text-align:left"><b>${ESC(held.name)}</b></td>
         <td style="padding:6px 8px;text-align:center">${stageBadge(held.phase.stage)}</td>
         <td style="padding:6px 8px;text-align:center">${held.volume.volRatio ? held.volume.volRatio.toFixed(2) : '--'} ${ESC(held.volume.quad)}</td>
         <td style="padding:6px 8px;text-align:center;color:${held.ma.aboveMA5 ? RED : GRAY}">${held.ma.ma5?.toFixed(3) ?? '--'}</td>
@@ -435,9 +434,18 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
         <td style="padding:6px 8px;text-align:right;color:${held.fund ? colorOf(held.fund.main) : GRAY}">${held.fund ? fmtYi(held.fund.main) : '--'}</td>
         <td style="padding:6px 8px;text-align:right;color:${held.fund && held.fund.small != null ? colorOf(held.fund.small) : GRAY}">${held.fund && held.fund.small != null ? fmtYi(held.fund.small) : '--'}</td>
         <td style="padding:6px 8px;text-align:right;color:${held.fund ? colorOf(held.fund.main5d) : GRAY}">${held.fund ? fmtYi(held.fund.main5d) : '--'}</td>
-      </tr>
+      </tr>`).join('')
+    const heldCons = heldAll.map(held =>
+      `<p style="font-size:13px;color:#333;background:#fff8e6;border-left:4px solid #ffc107;padding:8px 12px;border-radius:4px">${ESC(held.name)}：${ESC(held.conclusion)}</p>`).join('')
+    heldHtml = `
+    <h3 style="margin-top:24px">⭐ 持仓：${heldTitle}</h3>
+    <table style="border-collapse:collapse;width:100%;font-size:13px;background:#fafbfc">
+      <tr style="background:#f0f2f5">
+        <th style="padding:6px 8px;text-align:left">标的</th><th style="padding:6px 8px;text-align:left">阶段</th><th style="padding:6px 8px">量比/量价</th><th style="padding:6px 8px">MA5</th><th style="padding:6px 8px">MA10</th><th style="padding:6px 8px">MA20</th>
+        <th style="padding:6px 8px">241分位</th><th style="padding:6px 8px">主力今日</th><th style="padding:6px 8px">散户今日</th><th style="padding:6px 8px">5日累计</th>
+      </tr>${heldRows}
     </table>
-    <p style="font-size:13px;color:#333;background:#fff8e6;border-left:4px solid #ffc107;padding:8px 12px;border-radius:4px">${ESC(held.conclusion)}</p>`
+    ${heldCons}`
   }
 
   let signalHtml = ''
