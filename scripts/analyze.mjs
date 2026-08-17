@@ -577,8 +577,14 @@ async function main() {
   // 状态更新：active=当前全部活跃信号（消失自动移除，再出现会再提醒）
   if (type !== 'signal' && !st.sentType.includes(type)) st.sentType.push(type)
   st.active = allSignals.map(s => s.code + ':' + s.sig)
-  for (const s of freshSignals) st.sentOnce.push(s.code + ':' + s.sig)
-  for (const o of orderAlerts) st.sentOrder.push(o.code + ':' + o.p)
+  for (const s of freshSignals) {
+    const fp = s.code + ':' + s.sig
+    if (!st.sentOnce.includes(fp)) st.sentOnce.push(fp)
+  }
+  for (const o of orderAlerts) {
+    const fp = o.code + ':' + o.p
+    if (!st.sentOrder.includes(fp)) st.sentOrder.push(fp)
+  }
   st.count += 1
   saveState(st)
 }
