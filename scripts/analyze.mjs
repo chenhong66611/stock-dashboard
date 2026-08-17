@@ -227,7 +227,7 @@ async function fetchAll() {
       // 昨日对照（变动一览用）：用去掉今日的K线窗口重算昨日阶段 + 昨日主力
       rep.yDay = (() => {
         const yk = klines.slice(0, -1)
-        if (yk.length < 20) return { date: yk[yk.length - 1]?.date ?? null, stage: null, main: null }
+        if (yk.length < 20) return { date: yk[yk.length - 1]?.date ?? null, stage: null, main: null, small: null }
         const yc = yk.map(k => k.close)
         const yv = yk.map(k => k.volume)
         const yma = { ma5: calcMA(yc, 5), ma10: calcMA(yc, 10), ma20: calcMA(yc, 20) }
@@ -235,6 +235,7 @@ async function fetchAll() {
           date: yk[yk.length - 1].date,
           stage: judgePhase(yk, yma, calcVolRatio(yv)).stage,
           main: fund.length > 1 ? (fund[fund.length - 2]?.main ?? null) : null,
+          small: fund.length > 1 ? (fund[fund.length - 2]?.small ?? null) : null,
         }
       })()
       rep.quotePct = rep.price && klines.length > 1
@@ -362,7 +363,11 @@ function changeHtml(reports, list) {
     const mainChanged = y.main != null && mainNow != null && y.main !== mainNow
     const mainCol = mainChanged ? (mainNow > y.main ? RED : GREEN) : GRAY
     const mainText = `<b style="color:${mainCol}">${y.main != null ? fmtYi(y.main) : '--'} → ${mainNow != null ? fmtYi(mainNow) : '--'}</b>`
-    return `<p style="margin:4px 0;font-size:13px"><b>${ESC(r.name)}</b> · 阶段 ${stageText} · 主力 ${mainText}</p>`
+    const smallNow = r.fund?.small
+    const smallChanged = y.small != null && smallNow != null && y.small !== smallNow
+    const smallCol = smallChanged ? (smallNow > y.small ? RED : GREEN) : GRAY
+    const smallText = `<b style="color:${smallCol}">${y.small != null ? fmtYi(y.small) : '--'} → ${smallNow != null ? fmtYi(smallNow) : '--'}</b>`
+    return `<p style="margin:4px 0;font-size:13px"><b>${ESC(r.name)}</b> · 阶段 ${stageText} · 主力 ${mainText} · 散户 ${smallText}</p>`
   }).join('')
   return `<h3 style="margin-top:24px">📊 变动一览（${yDate} → ${tDate}）</h3>${lines}`
 }
