@@ -514,6 +514,17 @@ async function main() {
     }
   }
 
+  // 数据完整性门槛：拉取失败/缺资金数据的标的过半 → 本次不发送、不打标记
+  // 与假日判断同理（8/17 教训）：没确认数据可靠，就不消耗当天的发送机会，
+  // 下一个 run（5分钟后）数据恢复即自动补发，保证收到的邮件数据完整
+  const errCount = reports.filter(r => r.error).length
+  const fundMiss = reports.filter(r => !r.error && !r.fund).length
+  const HALF = Math.ceil(INDEX_LIST.length / 2)
+  if (errCount >= HALF || fundMiss >= HALF) {
+    console.log(`数据拉取失败 ${errCount} 只 / 缺资金数据 ${fundMiss} 只（≥${HALF}/${INDEX_LIST.length}），本次不发送，数据恢复后自动补发`)
+    process.exit(0)
+  }
+
   // 早报/复盘：当天一次（.alert-last 防重）——在假日判断之后，误判不会污染状态
   if (type !== 'signal') {
     if (!markSent(type)) {
@@ -559,11 +570,8 @@ async function main() {
     news = groups.flat()
   }
 
-  // 数据异常检测：拉取失败/缺资金数据的标的过半 → 邮件顶部警告
-  const errCount = reports.filter(r => r.error).length
-  const fundMiss = reports.filter(r => !r.error && !r.fund).length
-  const HALF = Math.ceil(INDEX_LIST.length / 2)
-  const dataWarn = errCount >= HALF || fundMiss >= HALF ? { err: errCount, fundMiss } : null
+  // 数据异常警告：失败过半已被前方门槛拦截（不发送），邮件数据必完整，恒为 null
+  const dataWarn = null
 
   // 盘中发新信号（精简）；早报/复盘发当天全部活跃信号（总结）
   const showSignals = type === 'signal' ? freshSignals : allSignals
