@@ -493,7 +493,23 @@ async function main() {
 
   const p = bjParts()
 
-  // 早报/复盘：当天一次（.alert-last 防重）
+  // 先拉数据、先判断假日，再标记"已发"——
+  // 教训(8/17)：周一九点开盘前 K线还是上周五(距今天3.37天>3)会误判非交易日，
+  // 若先 markSent 则状态被污染，全天所有 run 都跳过、无法补发。
+  console.log(`开始分析（${type} ${hhmm}）...`)
+  const reports = await fetchAll()
+
+  // 假日判断：K线最后日期距今天 >3天（长假/周末后开盘前数据未更新）
+  const lastDate = reports.find(r => !r.error)?.date
+  if (lastDate) {
+    const diff = (Date.now() - new Date(lastDate + 'T00:00:00+08:00')) / 86400_000
+    if (diff > 3) {
+      console.log('非交易日（最后K线 ' + lastDate + '），跳过')
+      process.exit(0)
+    }
+  }
+
+  // 早报/复盘：当天一次（.alert-last 防重）——在假日判断之后，误判不会污染状态
   if (type !== 'signal') {
     if (!markSent(type)) {
       console.log(`今天已发过 ${type}，跳过`)
@@ -502,19 +518,6 @@ async function main() {
   } else if (st.count >= MAX_DAILY) {
     console.log(`今天已发 ${st.count} 条，达到上限 ${MAX_DAILY}，跳过`)
     process.exit(0)
-  }
-
-  console.log(`开始分析（${type} ${hhmm}）...`)
-  const reports = await fetchAll()
-
-  // 假日判断：K线最后日期距今天 >3天
-  const lastDate = reports.find(r => !r.error)?.date
-  if (lastDate) {
-    const diff = (Date.now() - new Date(lastDate + 'T00:00:00+08:00')) / 86400_000
-    if (diff > 3) {
-      console.log('非交易日（最后K线 ' + lastDate + '），跳过')
-      process.exit(0)
-    }
   }
 
   // 数据日期切换（昨日数据→今日数据）：昨日信号作废，今日重新提醒
