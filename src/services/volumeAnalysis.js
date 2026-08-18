@@ -66,25 +66,62 @@ export async function fetchKline(code, days = ANALYSIS_DAYS) {
  * 拉取日线资金流（近 N 日），返回：
  * [{date, main, superBig, big, mid, small, close, pct}]  单位：元
  * main = 主力净流入 = 大单 + 超大单（口径已验证）
+ * 盘中会附加"今日实时"一项（分钟资金流接口实时累计），收盘后日线自带今日则不再附加
  */
 export async function fetchFundFlow(code, lmt = 30) {
   const key = 'fund:' + code + ':' + lmt
-  const hit = cacheGet(key, FUND_TTL)
-  if (hit) return hit
   const secid = toSecid(code)
   const url = `https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?secid=${secid}` +
     `&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63&klt=101&lmt=${lmt}`
-  // 串行请求 + 失败重试1次（东财限流实测）
-  const data = await fundThrottled(async () => {
+  let data = cacheGet(key, FUND_TTL)
+  if (!data) {
+    // 串行请求 + 失败重试1次（东财限流实测）
+    data = await fundThrottled(async () => {
+      try {
+        return await doFundFetch()
+      } catch (e) {
+        await new Promise(r => setTimeout(r, 1500))
+        return await doFundFetch()
+      }
+    })
+    cacheSet(key, data)
+  }
+
+  // 盘中补实时：日线资金流接口盘中没有当天数据（收盘才出），
+  // 否则信号邮件的"主力/散户"永远是昨天的（用户反馈）。实时部分不缓存，每次现拉最新累计。
+  const bjNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
+  const todayStr = `${bjNow.getFullYear()}-${String(bjNow.getMonth() + 1).padStart(2, '0')}-${String(bjNow.getDate()).padStart(2, '0')}`
+  const lastDate = data.length ? data[data.length - 1].date : null
+  if (lastDate !== todayStr) {
     try {
-      return await doFundFetch()
+      const rt = await fundThrottled(fetchIntradayFund)
+      if (rt && rt.date === todayStr && rt.main != null) data.push(rt)
     } catch (e) {
-      await new Promise(r => setTimeout(r, 1500))
-      return await doFundFetch()
+      console.warn(code + ' 实时资金流失败:', e.message)
     }
-  })
-  cacheSet(key, data)
+  }
   return data
+
+  async function fetchIntradayFund() {
+    const url = `https://push2delay.eastmoney.com/api/qt/stock/fflow/kline/get?lmt=0&klt=1&secid=${secid}` +
+      `&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63`
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`实时资金流请求失败 (${resp.status})`)
+    const json = await resp.json()
+    const klines = json?.data?.klines || []
+    if (!klines.length) throw new Error('实时资金流为空')
+    const p = klines[klines.length - 1].split(',')
+    return {
+      date: p[0].slice(0, 10),
+      main: +p[1],      // 主力净流入（元，到该分钟为止的当日累计）
+      small: +p[2],     // 小单净流入
+      mid: +p[3],       // 中单净流入
+      big: +p[4],       // 大单净流入
+      superBig: +p[5],  // 超大单净流入
+      close: null,      // 分钟接口不含收盘价/涨跌幅（pct 由 K 线计算）
+      pct: null,
+    }
+  }
 
   async function doFundFetch() {
     const resp = await fetch(url)
