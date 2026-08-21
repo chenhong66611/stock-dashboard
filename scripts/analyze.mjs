@@ -42,8 +42,8 @@ const ORDERS = [
   { code: 'sz159755', name: '电池', levels: [{ p: 0.93, d: 'buy' }] },
   { code: 'sh515790', name: '光伏', levels: [{ p: 0.83, d: 'buy' }] },
   { code: 'sz159869', name: '游戏', held: true, levels: [{ p: 1.10, d: 'buy' }, { p: 1.30, d: 'sell' }] }, // 已持仓(8/14)，加卖出目标提醒
-  { code: 'sh515250', name: '智能汽车', levels: [{ p: 0.945, d: 'buy' }, { p: 0.928, d: 'buy' }] },
-  { code: 'sh512710', name: '军工', levels: [{ p: 0.615, d: 'buy' }] },
+  { code: 'sh515250', name: '智能汽车', held: true, levels: [{ p: 0.945, d: 'buy' }, { p: 0.928, d: 'buy' }] }, // 已持仓(8/18)
+  { code: 'sh512710', name: '军工', held: true, levels: [{ p: 0.615, d: 'buy' }] }, // 已持仓(8/18)
   { code: 'sz159996', name: '家电', levels: [{ p: 1.392, d: 'buy' }] },
   { code: 'sz159766', name: '旅游', levels: [{ p: 0.547, d: 'buy' }] },
   { code: 'sh512980', name: '传媒', held: true, levels: [{ p: 0.98, d: 'sell' }] }, // 已持仓(8/14)，卖出目标提醒
