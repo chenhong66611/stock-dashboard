@@ -47,24 +47,24 @@ export function toSecid(code) {
 /** 拉取日K线（前复权），返回 [{date, open, close, high, low, volume}]，volume单位：手 */
 export async function fetchKline(code, days = ANALYSIS_DAYS) {
   const key = 'kline:' + code + ':' + days
-  const hit = cacheGet(key, KLINE_TTL)
-  if (hit) return hit
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},day,,,${days},qfq`
-  const resp = await fetch(url)
-  if (!resp.ok) throw new Error(`K线请求失败 (${resp.status})`)
-  const json = await resp.json()
-  const info = json?.data?.[code]
-  const raw = info?.qfqday || info?.day || []
-  const data = raw.map(k => ({
-    date: k[0], open: +k[1], close: +k[2], high: +k[3], low: +k[4], volume: +k[5],
-  }))
-  // 过滤未来日期：腾讯 fqkline 在周末/盘前会预生成下一交易日K线（实测军工 8/24 预埋=0.610，
-  // 真实 8/21 收盘=0.607），若混入会把"下周"的预埋价当现价发进邮件
+  let data = cacheGet(key, KLINE_TTL)
+  if (!data) {
+    const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},day,,,${days},qfq`
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`K线请求失败 (${resp.status})`)
+    const json = await resp.json()
+    const info = json?.data?.[code]
+    const raw = info?.qfqday || info?.day || []
+    data = raw.map(k => ({
+      date: k[0], open: +k[1], close: +k[2], high: +k[3], low: +k[4], volume: +k[5],
+    }))
+    cacheSet(key, data)
+  }
+  // 过滤未来日期（缓存命中也要过滤）：腾讯 fqkline 在周末/盘前会预生成下一交易日K线
+  // （实测军工 8/24 预埋=0.610，真实 8/21 收盘=0.607），若混入会把"下周"的预埋价当现价发进邮件
   const bjNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
   const todayStr = `${bjNow.getFullYear()}-${String(bjNow.getMonth() + 1).padStart(2, '0')}-${String(bjNow.getDate()).padStart(2, '0')}`
-  const filtered = data.filter(k => k.date <= todayStr)
-  cacheSet(key, filtered)
-  return filtered
+  return data.filter(k => k.date <= todayStr)
 }
 
 /**
