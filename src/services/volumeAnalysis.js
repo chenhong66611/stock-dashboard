@@ -58,8 +58,13 @@ export async function fetchKline(code, days = ANALYSIS_DAYS) {
   const data = raw.map(k => ({
     date: k[0], open: +k[1], close: +k[2], high: +k[3], low: +k[4], volume: +k[5],
   }))
-  cacheSet(key, data)
-  return data
+  // 过滤未来日期：腾讯 fqkline 在周末/盘前会预生成下一交易日K线（实测军工 8/24 预埋=0.610，
+  // 真实 8/21 收盘=0.607），若混入会把"下周"的预埋价当现价发进邮件
+  const bjNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
+  const todayStr = `${bjNow.getFullYear()}-${String(bjNow.getMonth() + 1).padStart(2, '0')}-${String(bjNow.getDate()).padStart(2, '0')}`
+  const filtered = data.filter(k => k.date <= todayStr)
+  cacheSet(key, filtered)
+  return filtered
 }
 
 /**
