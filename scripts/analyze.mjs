@@ -80,7 +80,7 @@ function bjKey() {
 function decideType(hhmm, st) {
   const sent = st?.sentType || []
   if (!sent.includes('morning') && hhmm >= '0900' && hhmm < '1000') return 'morning'
-  if (!sent.includes('review') && hhmm >= '1515') return 'review'  // 15:15起：避开腾讯日K收盘价最终化延迟(15:05快照会漂, 8/19实测0.610→0.607)
+  if (!sent.includes('review') && hhmm >= '1600') return 'review'  // 16:00起：避开腾讯日K收盘价最终化延迟(15:05快照会漂0.610→0.607, 8/19; 15:15仍漂0.630→0.622, 8/28实测)
   const isTrading = (hhmm >= '0930' && hhmm < '1135') || (hhmm >= '1300' && hhmm < '1505')
   return isTrading ? 'signal' : null                                 // 盘中触发式
 }

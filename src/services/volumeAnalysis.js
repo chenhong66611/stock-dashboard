@@ -64,7 +64,16 @@ export async function fetchKline(code, days = ANALYSIS_DAYS) {
   // （实测军工 8/24 预埋=0.610，真实 8/21 收盘=0.607），若混入会把"下周"的预埋价当现价发进邮件
   const bjNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
   const todayStr = `${bjNow.getFullYear()}-${String(bjNow.getMonth() + 1).padStart(2, '0')}-${String(bjNow.getDate()).padStart(2, '0')}`
-  return data.filter(k => k.date <= todayStr)
+  let out = data.filter(k => k.date <= todayStr)
+  // 收盘价合理性校验：腾讯日K收盘后存在"最终化延迟"——刚收盘时K线close可能是
+  // 未最终化的怪值（8/28 15:15实测 close=0.630 > 当日最高0.626，实际收盘0.622），
+  // 日期过滤挡不住这种"日期合法但价格错误"的数据。close超出[low, high]容差即丢弃。
+  const last = out[out.length - 1]
+  if (last && (last.close > last.high * 1.005 || last.close < last.low * 0.995)) {
+    console.warn(`${code} 最后一根K线异常(close=${last.close} high=${last.high} low=${last.low} date=${last.date})，视为未最终化丢弃`)
+    out.pop()
+  }
+  return out
 }
 
 /**
