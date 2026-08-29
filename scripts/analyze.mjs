@@ -219,6 +219,15 @@ async function fetchAll() {
         fetchKline(it.code).catch(() => []),
         fetchFundFlow(it.code).catch(() => []),
       ])
+      // 双源交叉核对：腾讯日K盘后最终化延迟可能给怪收盘价（8/28 15:15实测0.630），
+      // 东财资金流日线收盘价独立（qfq最新日不受复权影响=实际收盘），偏差>0.5%以资金流为准。
+      // 盘中资金流无当日close（close=null），自然跳过；无资金流时跳过。
+      const lastK = klines[klines.length - 1]
+      const lastF = lastK && fund.find(f => f.date === lastK.date)
+      if (lastK && lastF && lastF.close != null && Math.abs(lastF.close - lastK.close) / lastK.close > 0.005) {
+        console.warn(`${it.name} K线收盘(${lastK.close})与资金流收盘(${lastF.close})偏差超0.5%，以资金流为准`)
+        klines[klines.length - 1] = { ...lastK, close: lastF.close }
+      }
       if (!klines.length) {
         reports.push({ code: it.code, name: it.name, error: '无K线' })
         continue
