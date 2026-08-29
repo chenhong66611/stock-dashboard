@@ -211,7 +211,36 @@ function focusHtml(reports, focus) {
 }
 
 // ===== 数据拉取 =====
+// 实时行情（腾讯 qt 批量，复用前端 stockApi 解析逻辑）
+// 邮件价格统一用实时接口：腾讯 fqkline 盘中当天K线是定时快照（不随盘中波动刷新，用户反馈"一直是0.62"），
+// 且盘后最终化延迟会出怪值（8/28 0.630）。qt 现价字段全时段安全：盘中=现价、收盘后=收盘价、周末=最后交易价。
+async function fetchQuotes() {
+  const quotes = {}
+  try {
+    const codes = INDEX_LIST.map(i => i.code).join(',')
+    const txt = await (await fetch('https://qt.gtimg.cn/q=' + codes)).text()
+    for (const line of txt.trim().split('\n')) {
+      const m = line.match(/^v_(\w+)="(.+)";?$/)
+      if (!m) continue
+      const f = m[2].split('~')
+      const price = parseFloat(f[3])
+      if (!price || price <= 0) continue
+      const prevClose = parseFloat(f[4]) || 0
+      quotes[m[1]] = {
+        price,
+        changePct: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : null,
+        open: parseFloat(f[5]) || null,
+        prevClose: prevClose || null,
+      }
+    }
+  } catch (e) {
+    console.warn('实时行情失败，降级K线价格:', e.message)
+  }
+  return quotes
+}
+
 async function fetchAll() {
+  const quotes = await fetchQuotes()
   const reports = []
   for (const it of INDEX_LIST) {
     try {
@@ -252,6 +281,14 @@ async function fetchAll() {
         : null
       rep.dayOpen = klines[klines.length - 1].open
       rep.prevClose = klines.length > 1 ? klines[klines.length - 2].close : null
+      // 实时价格覆盖：qt 现价替换 K 线快照价（盘中K线不刷新/盘后未最终化怪值，qt 全时段权威）
+      const q = quotes[it.code]
+      if (q) {
+        rep.price = q.price
+        rep.quotePct = q.changePct
+        rep.dayOpen = q.open
+        rep.prevClose = q.prevClose
+      }
       reports.push(rep)
     } catch (e) {
       reports.push({ code: it.code, name: it.name, error: e.message })
