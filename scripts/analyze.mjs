@@ -321,6 +321,86 @@ async function fetchNews(keyword, pageSize = 3) {
   }
 }
 
+// ===== 风险扫描：持仓ETF公告 + 行业关键信号（早报/复盘带，盘中不带） =====
+// 数据源：东财基金公告接口(定期报告/份额类) + 东财新闻搜索(版号/政策等)
+// 设计：近7天窗口；无异常显示"无异常"；任一数据源失败静默降级，不阻塞邮件
+const RISK_CODES = [ // 持仓ETF公告扫描
+  { code: '159869', name: '游戏' },
+  { code: '512980', name: '传媒' },
+  { code: '512710', name: '军工' },
+  { code: '515250', name: '智能汽车' },
+  { code: '588000', name: '科创50' },
+]
+// 行业真杀信号：kw=搜索词，keep=标题必须包含的词（东财搜索是全文匹配，
+// "军工 政策"会命中"会计政策变更"这类无关公告，标题过滤才能保证相关）
+const RISK_NEWS = [
+  { kw: '游戏版号', keep: ['版号'] },
+  { kw: '军工', keep: ['军工'] },
+]
+const RISK_DAYS = 7
+
+async function fetchFundAnn(code, pageSize = 10) {
+  const out = []
+  for (const t of [3, 2]) { // 3=定期报告(财报期预告) 2=份额类(折算/申赎异常)
+    try {
+      const resp = await fetch(`https://api.fund.eastmoney.com/f10/JJGG?fundcode=${code}&pageIndex=1&pageSize=${pageSize}&type=${t}`,
+        { headers: { 'Referer': 'https://fundf10.eastmoney.com/', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } })
+      const json = await resp.json()
+      for (const it of (json?.Data || [])) {
+        out.push({ date: (it.PUBLISHDATEDesc || '').slice(0, 10), title: it.TITLE || '', cat: it.NEWCATEGORY })
+      }
+    } catch (e) { /* 单只失败不影响整体 */ }
+  }
+  return out
+}
+
+// 同 fetchNews 但保留完整日期(YYYY-MM-DD)，用于窗口过滤
+async function fetchRiskNews(keyword, pageSize = 5) {
+  const param = JSON.stringify({
+    uid: '', keyword,
+    type: ['cmsArticleWebOld'], client: 'web', clientType: 'web', clientVersion: 'curr',
+    param: { cmsArticleWebOld: { searchScope: 'default', sort: 'default', pageIndex: 1, pageSize, preTag: '<em>', postTag: '</em>' } },
+  })
+  const url = `https://search-api-web.eastmoney.com/search/jsonp?cb=cb&param=${encodeURIComponent(param)}`
+  try {
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } })
+    const text = await resp.text()
+    const json = JSON.parse(text.slice(text.indexOf('(') + 1, text.lastIndexOf(')')))
+    return (json?.result?.cmsArticleWebOld || []).map(a => ({
+      date: (a.date || '').slice(0, 10),
+      title: cleanTitle(a.title),
+      source: a.mediaName || '',
+      url: a.url || '',
+    }))
+  } catch (e) { return [] }
+}
+
+async function fetchRiskScan(days = RISK_DAYS) {
+  const bjNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
+  const cutoff = new Date(bjNow)
+  cutoff.setDate(cutoff.getDate() - days)
+  const c = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`
+  const items = []
+  const annLists = await Promise.all(RISK_CODES.map(e => fetchFundAnn(e.code).then(list => list.map(a => ({ ...a, name: e.name })))))
+  for (const list of annLists) for (const a of list) {
+    if (a.date >= c) items.push({ kind: '公告', name: a.name, date: a.date, title: a.title, url: '' })
+  }
+  const seen = []
+  // 模糊去重：多源转载同一条新闻标题会微差（"异动拉升"vs"异动拉升，成飞集成涨停"），
+  // 去空格标点后互为子串即视为同一条
+  const norm = s => s.replace(/[\s、，。！？:：·]/g, '')
+  const newsLists = await Promise.all(RISK_NEWS.map(g => fetchRiskNews(g.kw)))
+  for (const n of newsLists.flat()) {
+    if (n.date < c) continue
+    if (!RISK_NEWS.some(g => g.keep.some(w => n.title.includes(w)))) continue // 标题不相关即丢弃
+    const t = norm(n.title)
+    if (seen.some(s => t.includes(s) || s.includes(t))) continue
+    seen.push(t)
+    items.push({ kind: '动态', name: '', date: n.date, title: n.title, url: n.url, source: n.source })
+  }
+  return items.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12)
+}
+
 // ===== 邮件HTML =====
 const ESC = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const RED = '#f23645'
@@ -337,6 +417,17 @@ function stageBadge(stage) {
   const map = { 转强: 'background:#f23645;color:#fff', 反转: 'background:#f23645;color:#fff', 止跌: 'background:#00a854;color:#fff', 下跌通道: 'background:#d9e6d9;color:#1a7a3a', 横盘: 'background:#eef1f5;color:#5e6873' }
   const st = map[stage] || 'background:#eef1f5;color:#5e6873'
   return `<span style="padding:1px 8px;border-radius:8px;font-size:12px;${st}">${ESC(stage)}</span>`
+}
+
+function riskHtml(items) {
+  if (!items || !items.length) return '<p style="font-size:12px;color:#00a854">无异常 ✅（近7天无持仓公告、无版号/政策负面动态）</p>'
+  return items.map(i => {
+    const badge = i.kind === '公告'
+      ? `<span style="background:#e6f4ff;color:#1677ff;padding:1px 6px;border-radius:3px;font-size:11px">公告</span> <b>${ESC(i.name)}</b>`
+      : `<span style="background:#fff7e6;color:#fa8c16;padding:1px 6px;border-radius:3px;font-size:11px">动态</span>`
+    const title = i.title.length > 48 ? i.title.slice(0, 48) + '…' : i.title
+    return `<p style="font-size:12px;margin:3px 0">${i.date.slice(5)} ${badge} ${ESC(title)}${i.url ? ` <a href="${ESC(i.url)}" style="color:#1677ff">↗</a>` : ''}</p>`
+  }).join('')
 }
 
 function newsHtml(news) {
@@ -427,7 +518,7 @@ function heldLine(heldReports) {
   }).join('')
 }
 
-function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
+function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn, riskScan) {
   const p = bjParts()
   const typeName = { morning: '早报', review: '复盘', signal: '盘中信号' }[type]
   const dateStr = `${p.m}月${p.day}日 周${p.week}`
@@ -524,6 +615,9 @@ function buildHtml(type, reports, news, signals, orderAlerts, focus, dataWarn) {
     ${reportRows(reports)}
   </table>
 
+  <h3 style="margin-top:24px">🔍 风险扫描（近${RISK_DAYS}天：持仓公告 + 版号/政策动态）</h3>
+  ${riskHtml(riskScan)}
+
   <h3 style="margin-top:24px">📰 要闻（利好/利空）</h3>
   ${newsHtml(news)}
 
@@ -605,15 +699,20 @@ async function main() {
     process.exit(0)
   }
 
-  // 新闻（早报/复盘带，盘中不带）
+  // 新闻 + 风险扫描（早报/复盘带，盘中不带）
   let news = []
+  let riskScan = []
   if (type !== 'signal') {
-    const groups = await Promise.all([
-      fetchNews('A股', 3),
-      fetchNews('ETF', 2),
-      fetchNews('科创50', 2),
+    const [groups, risk] = await Promise.all([
+      Promise.all([
+        fetchNews('A股', 3),
+        fetchNews('ETF', 2),
+        fetchNews('科创50', 2),
+      ]),
+      fetchRiskScan(),
     ])
     news = groups.flat()
+    riskScan = risk
   }
 
   // 数据异常警告：失败过半已被前方门槛拦截（不发送），邮件数据必完整，恒为 null
@@ -622,7 +721,7 @@ async function main() {
   // 盘中发新信号（精简）；早报/复盘发当天全部活跃信号（总结）
   const showSignals = type === 'signal' ? freshSignals : allSignals
   const focus = type === 'signal' ? periodFocus(hhmm) : null
-  const html = buildHtml(type, reports, news, showSignals, orderAlerts, focus, dataWarn)
+  const html = buildHtml(type, reports, news, showSignals, orderAlerts, focus, dataWarn, type !== 'signal' ? riskScan : null)
   const typeName = { morning: '早报', review: '复盘', signal: '盘中信号' }[type]
   fs.writeFileSync('mail.html', html)
   fs.writeFileSync('mail_subject.txt', `ETF量能${typeName} ${p.m}月${p.day}日 ${showSignals.length ? `(${showSignals.length}个信号)` : orderAlerts.length ? '(挂单临近)' : ''}`)
