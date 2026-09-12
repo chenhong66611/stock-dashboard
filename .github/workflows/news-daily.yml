@@ -1,0 +1,54 @@
+name: 每日财经早报
+
+on:
+  # 北京时间每天 8:30（UTC = 北京-8）。
+  # 8:50 是备用槽：GitHub schedule 高负载时会跳过或迟到（这个仓库实测被跳得厉害），
+  # 靠 .news-last 防重，同一天只会真发一次。
+  schedule:
+    - cron: '30,50 0 * * *'
+  # 手动触发（调试用，点一次发一次）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # 抓取东财 + 华尔街见闻快讯，生成 mail.html / mail_subject.txt
+      - name: 抓取新闻
+        run: node scripts/news-daily.mjs
+
+      # 发送邮件（Gmail发件 → QQ邮箱收件），与 volume-alert.yml 共用同一套密钥
+      - name: 发送邮件
+        if: hashFiles('mail.html') != ''
+        env:
+          SMTP_HOST: 'smtp.gmail.com'
+          SMTP_PORT: '465'
+          SMTP_USER: 'qq3267254907@gmail.com'
+          SMTP_CODE: ${{ secrets.SMTP_CODE }}
+          SMTP_TO: '3267254907@qq.com'
+        run: python scripts/sendmail.py
+
+      # 把当天日期提交回仓库，供 8:50 备用槽判断"今天已发过"
+      # 只有真的生成了邮件才提交；.news-last 未变（比如 8:50 空跑）则不产生提交
+      - name: 记录已发日期
+        if: hashFiles('mail.html') != ''
+        run: |
+          git config user.name "news-bot"
+          git config user.email "news-bot@users.noreply.github.com"
+          git add .news-last
+          if git diff --cached --quiet; then
+            echo "无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "news sent: $(cat .news-last)"
+          git pull --rebase --autostash || true
+          git push || true

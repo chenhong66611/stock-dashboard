@@ -3,3 +3,7 @@ dist
 .vercel
 *.local
 .DS_Store
+
+# 运行时产物（每次跑完生成，由 sendmail.py 读取后即弃）
+mail.html
+mail_subject.txt
