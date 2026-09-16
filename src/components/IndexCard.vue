@@ -39,10 +39,10 @@
       <span class="banner-text">{{ bannerText }}</span>
     </div>
 
-    <!-- 持仓信息 -->
-    <div class="hold-bar">
+    <!-- 持仓标记（只显示有没有，不显示金额） -->
+    <div class="hold-bar" v-if="holding">
       <span>持仓</span>
-      <span class="hold-amount">{{ holding }} 元</span>
+      <span class="hold-amount held">✓ 你的仓</span>
     </div>
 
     <!-- 网格计划 -->
@@ -168,7 +168,7 @@ import { fmtYi, fmtVolHand } from '../services/volumeAnalysis.js'
 
 const props = defineProps({
   data: { type: Object, required: true },
-  holding: { type: Number, default: 0 },
+  holding: { type: Boolean, default: false },
   analysis: { type: Object, default: null },
 })
 
@@ -537,6 +537,14 @@ function fundClass(val) {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+}
+.hold-amount.held {
+  font-size: 0.7rem;
+  color: var(--red);
+  background: var(--red-bg);
+  border: 1px solid rgba(242, 54, 69, 0.3);
+  border-radius: 4px;
+  padding: 1px 7px;
 }
 
 /* ===== 网格计划 ===== */

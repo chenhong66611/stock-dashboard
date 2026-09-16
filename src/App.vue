@@ -74,7 +74,7 @@
 
     <!-- ETF 卡片网格 -->
     <div class="index-grid" v-if="mainItems.length">
-      <IndexCard v-for="item in mainItems" :key="item.code" :data="item" :holding="holdings[item.code] || 0"
+      <IndexCard v-for="item in mainItems" :key="item.code" :data="item" :holding="HELD.includes(item.code)"
                  :analysis="analysisMap[item.code]" />
     </div>
 
@@ -126,7 +126,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 import { fetchAllIndices, isTradingTime, formatTime } from './services/stockApi.js'
 import { analyzeAll } from './services/volumeAnalysis.js'
@@ -146,12 +146,10 @@ const newsList = ref([])
 let lastAnalysisAt = 0
 let lastNewsAt = 0
 
-// 持仓金额（按ETF代码索引，买入后手动更新）
-const holdings = reactive({
-  sh510310: 0,
-  sh588000: 704,  // 400份 @ 均价1.705
-  sh560010: 0,
-})
+// 实际持有哪几个 —— 只记「有没有」，不记金额。
+// ⚠️ 这个文件会打包进公开网站，金额一律不写在这里（金额在桌面的持仓档位计划表里）。
+// 买卖之后手动改这一行。
+const HELD = ['sh515250', 'sh512710', 'sz159869', 'sh512980', 'sh515790']
 
 // 分离 ETF 和参考指数
 const mainItems = computed(() => indices.value.filter(i => !i.ref))
