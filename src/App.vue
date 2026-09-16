@@ -78,9 +78,6 @@
                  :analysis="analysisMap[item.code]" />
     </div>
 
-    <!-- 交易计划（档位 + 实时距离） -->
-    <PlanPanel :indices="indices" />
-
     <!-- 参考指数分隔线 -->
     <div class="ref-divider" v-if="refItems.length">
       <span class="ref-divider-line"></span>
@@ -135,7 +132,6 @@ import { fetchAllIndices, isTradingTime, formatTime } from './services/stockApi.
 import { analyzeAll } from './services/volumeAnalysis.js'
 import { fetchNewsAll } from './services/newsApi.js'
 import IndexCard from './components/IndexCard.vue'
-import PlanPanel from './components/PlanPanel.vue'
 
 const indices = ref([])
 const loading = ref(false)
