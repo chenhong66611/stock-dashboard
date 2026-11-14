@@ -25,11 +25,22 @@
       </div>
     </header>
 
+    <!-- 两套口径各一屏，随时对照 -->
+    <div class="tabs">
+      <button class="tab" :class="{ on: view === 'concept' }" @click="switchView('concept')">
+        算力产业链<span class="tab-n">{{ CONCEPTS.length }}</span>
+      </button>
+      <button class="tab" :class="{ on: view === 'industry' }" @click="switchView('industry')">
+        申万一级行业<span class="tab-n">{{ SECTORS.length }}</span>
+      </button>
+    </div>
+
     <div class="stats" v-if="items.length">
       <span class="stat"><i class="dot up"></i>红 <b class="up">{{ upCount }}</b></span>
       <span class="stat"><i class="dot down"></i>绿 <b class="down">{{ downCount }}</b></span>
-      <span class="stat"><i class="dot flat"></i>平 <b class="flat">{{ flatCount }}</b></span>
-      <span class="stat sep">合计成交额 <b>{{ formatAmountYi(totalAmount) }}</b></span>
+      <span class="stat" v-if="flatCount"><i class="dot flat"></i>平 <b class="flat">{{ flatCount }}</b></span>
+      <!-- 概念之间成分股重叠，加起来是重复计数的，所以这一屏不给合计 -->
+      <span class="stat sep" v-if="view === 'industry'">合计成交额 <b>{{ formatAmountYi(totalAmount) }}</b></span>
       <span class="stat" v-if="best">最强 <b class="up">{{ best.name }}</b> {{ formatPct(best.pct) }}</span>
       <span class="stat" v-if="worst">最弱 <b class="down">{{ worst.name }}</b> {{ formatPct(worst.pct) }}</span>
     </div>
@@ -42,7 +53,7 @@
     <!-- 首屏只给一条细提示，不挡画面 -->
     <div class="first-load" v-if="!items.length && loading">
       <div class="spinner"></div>
-      <span>正在拉取 31 个行业板块…</span>
+      <span>{{ view === 'concept' ? '正在拉取算力产业链…' : '正在拉取 31 个行业板块…' }}</span>
     </div>
 
     <div class="chart" v-if="items.length">
@@ -57,7 +68,10 @@
         <span class="legend-bar right"></span>
         <span class="legend-label">{{ formatPct(maxAbs) }}</span>
       </div>
-      <div class="src">
+      <div class="src" v-if="view === 'concept'">
+        数据来源：同花顺概念板块 · 概念之间成分股大量重叠，面积是各板块自身成交额，<b>不可相加</b>
+      </div>
+      <div class="src" v-else>
         数据来源：腾讯行情 · 涨跌幅口径为腾讯板块指数，与东财/同花顺的申万指数会有出入，属正常
       </div>
     </footer>
@@ -67,20 +81,31 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import SectorHeatmap from './components/SectorHeatmap.vue'
-import { fetchSectors, maxAbsPct, formatPct, formatDataTime, formatAmountYi } from './services/sectorApi.js'
+import { fetchSectors, SECTORS, maxAbsPct, formatPct, formatDataTime, formatAmountYi } from './services/sectorApi.js'
+import { fetchConcepts, CONCEPTS, formatUpdateTime } from './services/conceptApi.js'
 import { isTradingTime } from './services/stockApi.js'
 
-const CACHE_KEY = 'sector-snapshot-v1'
+const CACHE_INDUSTRY = 'sector-snapshot-v1'
+const CACHE_CONCEPT = 'concept-snapshot-v1'
 
-const items = ref([])
+// 两套数据分开存，切来切去都是秒开
+const view = ref('concept')
+const conceptItems = ref([])
+const industryItems = ref([])
+const conceptTime = ref('')
+const industryTime = ref('')
+
 const error = ref('')
 const loading = ref(false)
 const marketOpen = ref(false)
-const dataTime = ref('')
 const flashing = ref(new Set())
 
 let timer = null
 let flashTimer = null
+let pendingRefresh = false
+
+const items = computed(() => (view.value === 'concept' ? conceptItems.value : industryItems.value))
+const dataTime = computed(() => (view.value === 'concept' ? conceptTime.value : industryTime.value))
 
 const maxAbs = computed(() => (items.value.length ? maxAbsPct(items.value) : 1))
 const upCount = computed(() => items.value.filter(i => i.pct > 0).length)
@@ -92,20 +117,25 @@ const worst = computed(() => items.value.reduce((a, b) => (b.pct < a.pct ? b : a
 
 /** 先在本地缓存上直接出画面，不让用户对着白屏等 */
 function paintFromCache() {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) return
-    const snap = JSON.parse(raw)
-    if (Array.isArray(snap?.items) && snap.items.length) {
-      items.value = snap.items
-      dataTime.value = snap.dataTime || ''
+  const read = key => {
+    try {
+      const snap = JSON.parse(localStorage.getItem(key) || 'null')
+      return Array.isArray(snap?.items) && snap.items.length ? snap : null
+    } catch {
+      return null // 缓存坏了就当没有
     }
-  } catch { /* 缓存坏了就当没有 */ }
+  }
+
+  const c = read(CACHE_CONCEPT)
+  if (c) { conceptItems.value = c.items; conceptTime.value = c.dataTime || '' }
+
+  const i = read(CACHE_INDUSTRY)
+  if (i) { industryItems.value = i.items; industryTime.value = i.dataTime || '' }
 }
 
-function saveCache() {
+function saveCache(key, list, time) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ items: items.value, dataTime: dataTime.value }))
+    localStorage.setItem(key, JSON.stringify({ items: list, dataTime: time }))
   } catch { /* 隐私模式写不了，忽略 */ }
 }
 
@@ -121,28 +151,65 @@ watch(items, (next, prev) => {
 })
 
 async function refresh() {
-  if (loading.value) return
+  // 有请求在飞就记一笔，等它回来再补一次 —— 否则切 tab 时刚好撞上刷新会漏掉
+  if (loading.value) {
+    pendingRefresh = true
+    return
+  }
   loading.value = true
+  const target = view.value
+
   try {
-    const data = await fetchSectors()
-    if (data.length) {
-      items.value = data
-      dataTime.value = formatDataTime(data[0].time)
-      saveCache()
+    if (target === 'concept') {
+      const data = await fetchConcepts()
+      if (data.length) {
+        conceptItems.value = data
+        conceptTime.value = formatUpdateTime(data[0].time)
+        saveCache(CACHE_CONCEPT, data, conceptTime.value)
+      }
+    } else {
+      const data = await fetchSectors()
+      if (data.length) {
+        industryItems.value = data
+        industryTime.value = formatDataTime(data[0].time)
+        saveCache(CACHE_INDUSTRY, data, industryTime.value)
+      }
     }
     error.value = ''
     marketOpen.value = isTradingTime()
   } catch (e) {
     // 失败不清屏，保留上一次的数据
-    error.value = e.message || '获取板块数据失败，请检查网络'
+    error.value = e.message || '获取数据失败，请检查网络'
   } finally {
     loading.value = false
+    if (pendingRefresh) {
+      pendingRefresh = false
+      refresh()
+    }
   }
+}
+
+function switchView(next) {
+  if (next === view.value) return
+  view.value = next
+  error.value = ''
+  flashing.value = new Set()
+  // 让当前这屏能被收藏 / 刷新后还在
+  try {
+    history.replaceState(null, '', next === 'industry' ? '#industry' : location.pathname + location.search)
+  } catch { /* file:// 下会抛，忽略 */ }
+  refresh()
+  scheduleNext()
 }
 
 function scheduleNext() {
   clearTimeout(timer)
-  const interval = isTradingTime() ? 15_000 : 60_000
+  const trading = isTradingTime()
+  // 概念板块一个板块一个请求，13 个一起发，所以拉得比行业那屏慢一点
+  const interval = view.value === 'concept'
+    ? (trading ? 20_000 : 120_000)
+    : (trading ? 15_000 : 60_000)
+
   timer = setTimeout(async () => {
     await refresh()
     scheduleNext()
@@ -150,6 +217,7 @@ function scheduleNext() {
 }
 
 onMounted(() => {
+  if (location.hash === '#industry') view.value = 'industry'
   paintFromCache()
   marketOpen.value = isTradingTime()
   refresh()
@@ -176,7 +244,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .bar-left {
@@ -219,6 +287,46 @@ h1 {
   gap: 14px;
   flex-wrap: wrap;
 }
+
+/* 口径切换 */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.tab:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+.tab.on {
+  background: rgba(242, 54, 69, 0.12);
+  border-color: rgba(242, 54, 69, 0.45);
+  color: var(--text-primary);
+}
+
+.tab-n {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tab.on .tab-n { background: rgba(242, 54, 69, 0.25); color: var(--text-primary); }
 
 .market-status {
   display: flex;
@@ -391,6 +499,7 @@ h1 {
   flex: 1;
   min-width: 240px;
 }
+.src b { color: var(--text-secondary); }
 
 @media (max-width: 640px) {
   h1 { font-size: 1.1rem; }
