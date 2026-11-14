@@ -7,6 +7,7 @@
         <div class="subtitle">正式网格3只 · 参考观察8只</div>
       </div>
       <div class="header-right">
+        <a class="sector-link" href="./sector.html">板块热力图 →</a>
         <div class="market-status">
           <span class="market-dot" :class="marketOpen ? 'open' : 'closed'"></span>
           {{ marketOpen ? '交易中' : '已收盘' }}

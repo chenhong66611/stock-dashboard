@@ -68,6 +68,23 @@ body {
   gap: 16px;
 }
 
+.sector-link {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.sector-link:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
 .market-status {
   display: flex;
   align-items: center;
@@ -408,6 +425,22 @@ body {
 
 .footer a:hover {
   color: var(--text-primary);
+}
+
+/* ====================================
+   板块热力图页（sector.html）
+   和盯盘页的 1200px 居中版式不同，这页要铺满视口
+   ==================================== */
+body.sector-page {
+  overflow-x: hidden;
+}
+
+body.sector-page #app {
+  max-width: none;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 18px 10px;
 }
 
 /* 响应式 */
