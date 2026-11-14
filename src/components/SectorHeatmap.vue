@@ -94,21 +94,21 @@ function fitLabel(t) {
     }
   }
 
-  // 只放得下一行：横排名称
-  for (const fs of [12, 11, 10, 9, 8]) {
-    if (t.w >= cw * fs + 6 && t.h >= fs * 1.35) {
+  // 只放得下一行：横排名称（一路降到 7px，再小就真的糊了）
+  for (const fs of [12, 11, 10, 9, 8, 7]) {
+    if (t.w >= cw * fs + 4 && t.h >= fs * 1.3) {
       return { fs, pctFs: 0, amtFs: 0, name: true, pct: false, amt: false }
     }
   }
   // 又窄又高：竖着写，名字比一个光秃秃的百分数有用
-  for (const fs of [11, 10, 9, 8]) {
-    if (t.w >= fs + 3 && t.h >= cw * fs + 4) {
+  for (const fs of [11, 10, 9, 8, 7]) {
+    if (t.w >= fs + 2 && t.h >= cw * fs + 3) {
       return { fs, pctFs: 0, amtFs: 0, name: true, pct: false, amt: false, vertical: true }
     }
   }
   // 最后退到只写涨跌幅
-  for (const fs of [13, 12, 11, 10, 9]) {
-    if (t.w >= numW(pctTxt, fs) + 5 && t.h >= fs * 1.35) {
+  for (const fs of [13, 12, 11, 10, 9, 8]) {
+    if (t.w >= numW(pctTxt, fs) + 4 && t.h >= fs * 1.3) {
       return { fs: 0, pctFs: fs, amtFs: 0, name: false, pct: true, amt: false }
     }
   }
