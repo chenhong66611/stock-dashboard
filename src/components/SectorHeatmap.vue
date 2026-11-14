@@ -10,9 +10,10 @@
       @mousemove="onMove"
     >
       <span v-if="t.held" class="held-dot" title="你持仓的板块">持仓</span>
-      <span v-if="t.showName" class="tile-name" :style="{ fontSize: t.fs.name + 'px' }">{{ t.name }}</span>
-      <span v-if="t.fs.pct" class="tile-pct" :style="{ fontSize: t.fs.pct + 'px' }">{{ fmtPct(t.pct) }}</span>
-      <span v-if="t.fs.amt" class="tile-amt" :style="{ fontSize: t.fs.amt + 'px' }">{{ fmtAmount(t.amount) }}</span>
+      <span v-if="t.label?.name" class="tile-name" :class="{ vert: t.label.vertical }"
+            :style="{ fontSize: t.label.fs + 'px' }">{{ t.short || t.name }}</span>
+      <span v-if="t.label?.pct" class="tile-pct" :style="{ fontSize: t.label.pctFs + 'px' }">{{ fmtPct(t.pct) }}</span>
+      <span v-if="t.label?.amt" class="tile-amt" :style="{ fontSize: t.label.amtFs + 'px' }">{{ fmtAmount(t.amount) }}</span>
     </div>
 
     <!-- 悬停详情 -->
@@ -64,29 +65,67 @@ function onMove(e) {
   pointer.value = { x: e.clientX, y: e.clientY }
 }
 
+const LABEL_SIZES = [15, 13, 12, 11, 10, 9]
+const NUM_RATIO = 0.56 // 数字/符号平均宽度 ≈ 字号的 0.56 倍
+
+/**
+ * 方块面积由成交额锁死，改不了 —— 能做的是在有限空间里尽量挤出字来。
+ * 按信息量从多到少逐级降级，取第一个放得下的：
+ *   名称+涨跌幅+成交额 → 名称+涨跌幅 → 只有名称 → 只有涨跌幅 → 竖排名称 → 留白
+ */
+function fitLabel(t) {
+  const name = t.short || t.name
+  const cw = name.length // 中文字宽约等于字号
+  const pctTxt = formatPct(t.pct)
+  const amtTxt = formatAmountYi(t.amount)
+  const numW = (s, fs) => s.length * fs * NUM_RATIO
+
+  for (const fs of LABEL_SIZES) {
+    const nameW = cw * fs + 6
+    const pctFs = Math.round(fs * 1.7)
+    const amtFs = Math.max(8, fs - 3)
+    const colW = Math.max(nameW, numW(pctTxt, pctFs) + 6)
+
+    if (t.w >= Math.max(colW, numW(amtTxt, amtFs) + 6) && t.h >= fs * 1.2 + pctFs * 1.2 + amtFs * 1.3 + 5) {
+      return { fs, pctFs, amtFs, name: true, pct: true, amt: true }
+    }
+    if (t.w >= colW && t.h >= fs * 1.2 + pctFs * 1.2 + 3) {
+      return { fs, pctFs, amtFs, name: true, pct: true, amt: false }
+    }
+  }
+
+  // 只放得下一行：横排名称
+  for (const fs of [12, 11, 10, 9, 8]) {
+    if (t.w >= cw * fs + 6 && t.h >= fs * 1.35) {
+      return { fs, pctFs: 0, amtFs: 0, name: true, pct: false, amt: false }
+    }
+  }
+  // 又窄又高：竖着写，名字比一个光秃秃的百分数有用
+  for (const fs of [11, 10, 9, 8]) {
+    if (t.w >= fs + 3 && t.h >= cw * fs + 4) {
+      return { fs, pctFs: 0, amtFs: 0, name: true, pct: false, amt: false, vertical: true }
+    }
+  }
+  // 最后退到只写涨跌幅
+  for (const fs of [13, 12, 11, 10, 9]) {
+    if (t.w >= numW(pctTxt, fs) + 5 && t.h >= fs * 1.35) {
+      return { fs: 0, pctFs: fs, amtFs: 0, name: false, pct: true, amt: false }
+    }
+  }
+  return null
+}
+
 const tiles = computed(() => {
   const { w, h } = size.value
   if (!w || !h || !props.items.length) return []
 
-  const laid = squarify(props.items, w, h)
-  return laid.map(t => {
-    const fg = sectorTextTone(t.pct, props.maxAbs)
-    const nameFs = t.w >= 132 ? 15 : t.w >= 96 ? 13 : t.w >= 70 ? 12 : 11
-    return {
-      ...t,
-      held: HELD_SECTORS.includes(t.name),
-      fill: sectorFill(t.pct, props.maxAbs),
-      fg,
-      // 方块够大才写字，太小就留白 —— 详情走悬停
-      fs: {
-        name: nameFs,
-        pct: t.w >= 110 && t.h >= 64 ? 26 : t.w >= 78 && t.h >= 50 ? 19 : 0,
-        amt: t.w >= 110 && t.h >= 92 ? 11 : 0,
-      },
-      // 中文字宽约等于字号，放不下就整条不写，免得裁成半截字
-      showName: t.h >= 20 && t.w >= t.name.length * nameFs + 8,
-    }
-  })
+  return squarify(props.items, w, h).map(t => ({
+    ...t,
+    label: fitLabel(t),
+    held: HELD_SECTORS.includes(t.name),
+    fill: sectorFill(t.pct, props.maxAbs),
+    fg: sectorTextTone(t.pct, props.maxAbs),
+  }))
 })
 
 function tileStyle(t) {
@@ -225,6 +264,14 @@ function worstRatio(row, side) {
   letter-spacing: 0.5px;
   white-space: nowrap;
   opacity: 0.92;
+}
+
+/* 又窄又高的方块：竖着写名字 */
+.tile-name.vert {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 1px;
+  line-height: 1;
 }
 
 .tile-pct {

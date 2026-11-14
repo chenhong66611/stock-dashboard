@@ -15,16 +15,16 @@ export const CONCEPTS = [
   { bk: '885756', name: '芯片概念' },
   { bk: '886042', name: '存储芯片' },
   { bk: '886009', name: '先进封装' },
-  { bk: '885908', name: '第三代半导体' },
-  { bk: '886033', name: '共封装光学(CPO)' },
-  { bk: '886073', name: '铜缆高速连接' },
-  { bk: '886044', name: '液冷服务器' },
-  { bk: '885887', name: '数据中心(AIDC)' },
-  { bk: '885957', name: '东数西算(算力)' },
+  { bk: '885908', name: '第三代半导体', short: '三代半导体' },
+  { bk: '886033', name: '共封装光学(CPO)', short: 'CPO' },
+  { bk: '886073', name: '铜缆高速连接', short: '铜缆高速' },
+  { bk: '886044', name: '液冷服务器', short: '液冷' },
+  { bk: '885887', name: '数据中心(AIDC)', short: 'AIDC' },
+  { bk: '885957', name: '东数西算(算力)', short: '东数西算' },
   { bk: '886050', name: '算力租赁' },
-  { bk: '885959', name: 'PCB概念' },
-  { bk: '886048', name: '英伟达概念' },
-  { bk: '885800', name: '消费电子概念' },
+  { bk: '885959', name: 'PCB概念', short: 'PCB' },
+  { bk: '886048', name: '英伟达概念', short: '英伟达' },
+  { bk: '885800', name: '消费电子概念', short: '消费电子' },
 ]
 
 /** 同花顺 realhead 的数字键（来源：概念详情页表头的 field 属性） */
@@ -89,6 +89,7 @@ function parseOne(meta, text) {
   return {
     code: meta.bk,
     name: it.name || meta.name,
+    short: meta.short || '',
     pct: num(F.pct),
     amount: num(F.amount) / 1e8,       // 元 → 亿元
     turnover: num(F.turnover),
