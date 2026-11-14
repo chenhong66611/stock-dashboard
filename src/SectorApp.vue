@@ -25,13 +25,16 @@
       </div>
     </header>
 
-    <!-- 两套口径各一屏，随时对照 -->
+    <!-- 三套口径各一屏，随时对照 -->
     <div class="tabs">
-      <button class="tab" :class="{ on: view === 'concept' }" @click="switchView('concept')">
-        算力产业链<span class="tab-n">{{ CONCEPTS.length }}</span>
+      <button class="tab" :class="{ on: view === 'board' }" @click="switchView('board')">
+        全市场细分<span class="tab-n">{{ BOARDS.length }}</span>
       </button>
       <button class="tab" :class="{ on: view === 'industry' }" @click="switchView('industry')">
-        申万一级行业<span class="tab-n">{{ SECTORS.length }}</span>
+        申万一级<span class="tab-n">{{ SECTORS.length }}</span>
+      </button>
+      <button class="tab" :class="{ on: view === 'concept' }" @click="switchView('concept')">
+        算力产业链<span class="tab-n">{{ CONCEPTS.length }}</span>
       </button>
     </div>
 
@@ -39,8 +42,8 @@
       <span class="stat"><i class="dot up"></i>红 <b class="up">{{ upCount }}</b></span>
       <span class="stat"><i class="dot down"></i>绿 <b class="down">{{ downCount }}</b></span>
       <span class="stat" v-if="flatCount"><i class="dot flat"></i>平 <b class="flat">{{ flatCount }}</b></span>
-      <!-- 概念之间成分股重叠，加起来是重复计数的，所以这一屏不给合计 -->
-      <span class="stat sep" v-if="view === 'industry'">合计成交额 <b>{{ formatAmountYi(totalAmount) }}</b></span>
+      <!-- 概念之间成分股重叠，加起来是重复计数的，所以只有前两屏给合计 -->
+      <span class="stat sep" v-if="view !== 'concept'">合计成交额 <b>{{ formatAmountYi(totalAmount) }}</b></span>
       <span class="stat" v-if="best">最强 <b class="up">{{ best.name }}</b> {{ formatPct(best.pct) }}</span>
       <span class="stat" v-if="worst">最弱 <b class="down">{{ worst.name }}</b> {{ formatPct(worst.pct) }}</span>
     </div>
@@ -53,7 +56,7 @@
     <!-- 首屏只给一条细提示，不挡画面 -->
     <div class="first-load" v-if="!items.length && loading">
       <div class="spinner"></div>
-      <span>{{ view === 'concept' ? '正在拉取算力产业链…' : '正在拉取 31 个行业板块…' }}</span>
+      <span>{{ view === 'concept' ? '正在拉取算力产业链…' : view === 'board' ? '正在拉取全市场细分板块…' : '正在拉取 31 个行业板块…' }}</span>
     </div>
 
     <div class="chart" v-if="items.length">
@@ -71,6 +74,9 @@
       <div class="src" v-if="view === 'concept'">
         数据来源：同花顺概念板块 · 概念之间成分股大量重叠，面积是各板块自身成交额，<b>不可相加</b>
       </div>
+      <div class="src" v-else-if="view === 'board'">
+        数据来源：腾讯行情 · 27 个行业拆到二级，计算机/通信/机械设备等腾讯未给完整二级的退回一级 · 互不重叠
+      </div>
       <div class="src" v-else>
         数据来源：腾讯行情 · 涨跌幅口径为腾讯板块指数，与东财/同花顺的申万指数会有出入，属正常
       </div>
@@ -81,19 +87,22 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import SectorHeatmap from './components/SectorHeatmap.vue'
-import { fetchSectors, SECTORS, maxAbsPct, formatPct, formatDataTime, formatAmountYi } from './services/sectorApi.js'
+import { fetchSectors, SECTORS, fetchBoards, BOARDS, maxAbsPct, formatPct, formatDataTime, formatAmountYi } from './services/sectorApi.js'
 import { fetchConcepts, CONCEPTS, formatUpdateTime } from './services/conceptApi.js'
 import { isTradingTime } from './services/stockApi.js'
 
+const CACHE_BOARD = 'board-snapshot-v1'
 const CACHE_INDUSTRY = 'sector-snapshot-v1'
 const CACHE_CONCEPT = 'concept-snapshot-v1'
 
-// 两套数据分开存，切来切去都是秒开
-const view = ref('concept')
-const conceptItems = ref([])
+// 三套数据分开存，切来切去都是秒开
+const view = ref('board')
+const boardItems = ref([])
 const industryItems = ref([])
-const conceptTime = ref('')
+const conceptItems = ref([])
+const boardTime = ref('')
 const industryTime = ref('')
+const conceptTime = ref('')
 
 const error = ref('')
 const loading = ref(false)
@@ -104,8 +113,17 @@ let timer = null
 let flashTimer = null
 let pendingRefresh = false
 
-const items = computed(() => (view.value === 'concept' ? conceptItems.value : industryItems.value))
-const dataTime = computed(() => (view.value === 'concept' ? conceptTime.value : industryTime.value))
+const items = computed(() => {
+  if (view.value === 'board') return boardItems.value
+  if (view.value === 'concept') return conceptItems.value
+  return industryItems.value
+})
+
+const dataTime = computed(() => {
+  if (view.value === 'board') return boardTime.value
+  if (view.value === 'concept') return conceptTime.value
+  return industryTime.value
+})
 
 const maxAbs = computed(() => (items.value.length ? maxAbsPct(items.value) : 1))
 const upCount = computed(() => items.value.filter(i => i.pct > 0).length)
@@ -125,6 +143,9 @@ function paintFromCache() {
       return null // 缓存坏了就当没有
     }
   }
+
+  const b = read(CACHE_BOARD)
+  if (b) { boardItems.value = b.items; boardTime.value = b.dataTime || '' }
 
   const c = read(CACHE_CONCEPT)
   if (c) { conceptItems.value = c.items; conceptTime.value = c.dataTime || '' }
@@ -167,6 +188,13 @@ async function refresh() {
         conceptTime.value = formatUpdateTime(data[0].time)
         saveCache(CACHE_CONCEPT, data, conceptTime.value)
       }
+    } else if (target === 'board') {
+      const data = await fetchBoards()
+      if (data.length) {
+        boardItems.value = data
+        boardTime.value = formatDataTime(data[0].time)
+        saveCache(CACHE_BOARD, data, boardTime.value)
+      }
     } else {
       const data = await fetchSectors()
       if (data.length) {
@@ -196,7 +224,7 @@ function switchView(next) {
   flashing.value = new Set()
   // 让当前这屏能被收藏 / 刷新后还在
   try {
-    history.replaceState(null, '', next === 'industry' ? '#industry' : location.pathname + location.search)
+    history.replaceState(null, '', next === 'board' ? location.pathname + location.search : '#' + next)
   } catch { /* file:// 下会抛，忽略 */ }
   refresh()
   scheduleNext()
@@ -205,7 +233,7 @@ function switchView(next) {
 function scheduleNext() {
   clearTimeout(timer)
   const trading = isTradingTime()
-  // 概念板块一个板块一个请求，13 个一起发，所以拉得比行业那屏慢一点
+  // 概念板块一个板块一个请求，13 个一起发，所以拉得比腾讯那两屏慢一点
   const interval = view.value === 'concept'
     ? (trading ? 20_000 : 120_000)
     : (trading ? 15_000 : 60_000)
@@ -217,7 +245,8 @@ function scheduleNext() {
 }
 
 onMounted(() => {
-  if (location.hash === '#industry') view.value = 'industry'
+  const h = location.hash.replace('#', '')
+  if (h === 'board' || h === 'industry' || h === 'concept') view.value = h
   paintFromCache()
   marketOpen.value = isTradingTime()
   refresh()

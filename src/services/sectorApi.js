@@ -47,6 +47,104 @@ export const SECTORS = [
 // 军工龙头→国防军工  传媒/游戏→传媒  光伏→电力设备
 export const HELD_SECTORS = ['国防军工', '传媒', '电力设备']
 
+/**
+ * 全市场细分板块 —— 27 个行业拆到二级（78 块），
+ * 计算机/通信/机械设备/非银金融/汽车 等 12 个腾讯没给完整二级的行业退回一级本身。
+ * 结果是 90 块，互不重叠，加起来正好等于 31 个一级的总和（实测 16545 vs 16548 亿）。
+ */
+export const BOARDS = [
+  { code: 'pt01801081', name: '半导体' },
+  { code: 'pt01801890', name: '机械设备' },
+  { code: 'pt01801770', name: '通信' },
+  { code: 'pt01801083', name: '元件' },
+  { code: 'pt01801750', name: '计算机' },
+  { code: 'pt01801760', name: '传媒' },
+  { code: 'pt01801880', name: '汽车' },
+  { code: 'pt01801085', name: '消费电子' },
+  { code: 'pt01801737', name: '电池' },
+  { code: 'pt01801084', name: '光学光电子' },
+  { code: 'pt01801151', name: '化学制药' },
+  { code: 'pt01801735', name: '光伏设备' },
+  { code: 'pt01801161', name: '电力' },
+  { code: 'pt01801010', name: '农林牧渔' },
+  { code: 'pt01801055', name: '工业金属' },
+  { code: 'pt01801156', name: '医疗服务' },
+  { code: 'pt01801790', name: '非银金融' },
+  { code: 'pt01801034', name: '化学制品' },
+  { code: 'pt01801036', name: '塑料' },
+  { code: 'pt01801738', name: '电网设备' },
+  { code: 'pt01801170', name: '交通运输' },
+  { code: 'pt01801086', name: '电子化学品' },
+  { code: 'pt01801200', name: '商贸零售' },
+  { code: 'pt01801054', name: '小金属' },
+  { code: 'pt01801745', name: '军工电子' },
+  { code: 'pt01801125', name: '白酒' },
+  { code: 'pt01801153', name: '医疗器械' },
+  { code: 'pt01801960', name: '石油石化' },
+  { code: 'pt01801782', name: '国有大型银行' },
+  { code: 'pt01801712', name: '玻璃玻纤' },
+  { code: 'pt01801783', name: '股份制银行' },
+  { code: 'pt01801742', name: '航空装备' },
+  { code: 'pt01801784', name: '城商行' },
+  { code: 'pt01801152', name: '生物制品' },
+  { code: 'pt01801181', name: '房地产开发' },
+  { code: 'pt01801082', name: '其他电子' },
+  { code: 'pt01801155', name: '中药' },
+  { code: 'pt01801971', name: '环境治理' },
+  { code: 'pt01801053', name: '贵金属' },
+  { code: 'pt01801033', name: '化学原料' },
+  { code: 'pt01801733', name: '其他电源设备' },
+  { code: 'pt01801210', name: '社会服务' },
+  { code: 'pt01801951', name: '煤炭开采' },
+  { code: 'pt01801056', name: '能源金属' },
+  { code: 'pt01801038', name: '农化制品' },
+  { code: 'pt01801111', name: '白色家电' },
+  { code: 'pt01801132', name: '服装家纺' },
+  { code: 'pt01801116', name: '家电零部件' },
+  { code: 'pt01801141', name: '包装印刷' },
+  { code: 'pt01801736', name: '风电设备' },
+  { code: 'pt01801142', name: '家居用品' },
+  { code: 'pt01801723', name: '基础建设' },
+  { code: 'pt01801127', name: '饮料乳品' },
+  { code: 'pt01801743', name: '地面兵装' },
+  { code: 'pt01801731', name: '电机' },
+  { code: 'pt01801724', name: '专业工程' },
+  { code: 'pt01801741', name: '航天装备' },
+  { code: 'pt01801163', name: '燃气' },
+  { code: 'pt01801051', name: '金属新材料' },
+  { code: 'pt01801744', name: '航海装备' },
+  { code: 'pt01801154', name: '医药商业' },
+  { code: 'pt01801113', name: '小家电' },
+  { code: 'pt01801131', name: '纺织制造' },
+  { code: 'pt01801713', name: '装修建材' },
+  { code: 'pt01801726', name: '工程咨询' },
+  { code: 'pt01801114', name: '厨卫电器' },
+  { code: 'pt01801980', name: '美容护理' },
+  { code: 'pt01801115', name: '照明设备' },
+  { code: 'pt01801722', name: '装修装饰' },
+  { code: 'pt01801124', name: '食品加工' },
+  { code: 'pt01801143', name: '造纸' },
+  { code: 'pt01801711', name: '水泥' },
+  { code: 'pt01801785', name: '农商行' },
+  { code: 'pt01801044', name: '普钢' },
+  { code: 'pt01801128', name: '休闲食品' },
+  { code: 'pt01801129', name: '调味发酵品' },
+  { code: 'pt01801231', name: '综合' },
+  { code: 'pt01801039', name: '非金属材料' },
+  { code: 'pt01801032', name: '化学纤维' },
+  { code: 'pt01801133', name: '饰品' },
+  { code: 'pt01801721', name: '房屋建设' },
+  { code: 'pt01801112', name: '黑色家电' },
+  { code: 'pt01801972', name: '环保设备' },
+  { code: 'pt01801126', name: '非白酒' },
+  { code: 'pt01801037', name: '橡胶' },
+  { code: 'pt01801183', name: '房地产服务' },
+  { code: 'pt01801045', name: '特钢' },
+  { code: 'pt01801952', name: '焦炭' },
+  { code: 'pt01801043', name: '冶钢原料' },
+  { code: 'pt01801145', name: '文娱用品' },
+]
+
 /** 腾讯板块行情的字段下标（实测 63 个字段确认过，和 ETF 的解析不同） */
 const F = {
   time: 30,     // 数据时间 20261113150247
@@ -62,8 +160,18 @@ const F = {
  * 拉取 31 个一级板块的实时行情
  * @returns {Promise<Array>} [{ code, name, pct, amount(亿), turnover, floatCap, volRatio, time }]
  */
+/** 31 个申万一级行业 */
 export async function fetchSectors() {
-  const codes = SECTORS.map(s => s.code).join(',')
+  return fetchList(SECTORS)
+}
+
+/** 90 个细分板块（二级为主，一级兜底），一次请求全拿 */
+export async function fetchBoards() {
+  return fetchList(BOARDS)
+}
+
+async function fetchList(list) {
+  const codes = list.map(s => s.code).join(',')
   const resp = await fetch(`https://qt.gtimg.cn/q=${codes}`)
   if (!resp.ok) throw new Error(`请求失败 (${resp.status})`)
 
@@ -71,10 +179,10 @@ export async function fetchSectors() {
   if (!text || text.includes('FAILED')) {
     throw new Error('数据源返回异常，请稍后重试')
   }
-  return parseSectors(text)
+  return parseList(text, list)
 }
 
-function parseSectors(text) {
+function parseList(text, list) {
   // 每行形如：v_pt01801010="2~农林牧渔~01801010~..."
   const fieldsByCode = new Map()
   for (const seg of text.split(';')) {
@@ -84,7 +192,7 @@ function parseSectors(text) {
   }
 
   const items = []
-  for (const meta of SECTORS) {
+  for (const meta of list) {
     const f = fieldsByCode.get(meta.code)
     if (!f || f.length < 59) continue
 
