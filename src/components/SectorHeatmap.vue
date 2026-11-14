@@ -11,7 +11,7 @@
     >
       <span v-if="t.held" class="held-dot" title="你持仓的板块">持仓</span>
       <span v-if="t.label?.name" class="tile-name" :class="{ vert: t.label.vertical }"
-            :style="{ fontSize: t.label.fs + 'px' }">{{ t.short || t.name }}</span>
+            :style="{ fontSize: t.label.fs + 'px' }">{{ t.label.text }}</span>
       <span v-if="t.label?.pct" class="tile-pct" :style="{ fontSize: t.label.pctFs + 'px' }">{{ fmtPct(t.pct) }}</span>
       <span v-if="t.label?.amt" class="tile-amt" :style="{ fontSize: t.label.amtFs + 'px' }">{{ fmtAmount(t.amount) }}</span>
     </div>
@@ -74,41 +74,48 @@ const NUM_RATIO = 0.56 // 数字/符号平均宽度 ≈ 字号的 0.56 倍
  *   名称+涨跌幅+成交额 → 名称+涨跌幅 → 只有名称 → 只有涨跌幅 → 竖排名称 → 留白
  */
 function fitLabel(t) {
-  const name = t.short || t.name
-  const cw = name.length // 中文字宽约等于字号
+  const full = t.short || t.name
   const pctTxt = formatPct(t.pct)
   const amtTxt = formatAmountYi(t.amount)
   const numW = (s, fs) => s.length * fs * NUM_RATIO
+  const fits = (w, h) => t.w >= w && t.h >= h
+  const one = (fs, text, vertical = false) =>
+    ({ fs, pctFs: 0, amtFs: 0, name: true, pct: false, amt: false, vertical, text })
 
+  // 三行 / 两行：名称 + 涨跌幅（+ 成交额）
   for (const fs of LABEL_SIZES) {
-    const nameW = cw * fs + 6
+    const nameW = full.length * fs + 6
     const pctFs = Math.round(fs * 1.7)
     const amtFs = Math.max(8, fs - 3)
     const colW = Math.max(nameW, numW(pctTxt, pctFs) + 6)
 
-    if (t.w >= Math.max(colW, numW(amtTxt, amtFs) + 6) && t.h >= fs * 1.2 + pctFs * 1.2 + amtFs * 1.3 + 5) {
-      return { fs, pctFs, amtFs, name: true, pct: true, amt: true }
+    if (fits(Math.max(colW, numW(amtTxt, amtFs) + 6), fs * 1.2 + pctFs * 1.2 + amtFs * 1.3 + 5)) {
+      return { fs, pctFs, amtFs, name: true, pct: true, amt: true, text: full }
     }
-    if (t.w >= colW && t.h >= fs * 1.2 + pctFs * 1.2 + 3) {
-      return { fs, pctFs, amtFs, name: true, pct: true, amt: false }
+    if (fits(colW, fs * 1.2 + pctFs * 1.2 + 3)) {
+      return { fs, pctFs, amtFs, name: true, pct: true, amt: false, text: full }
     }
   }
 
-  // 只放得下一行：横排名称（一路降到 7px，再小就真的糊了）
-  for (const fs of [12, 11, 10, 9, 8, 7]) {
-    if (t.w >= cw * fs + 4 && t.h >= fs * 1.3) {
-      return { fs, pctFs: 0, amtFs: 0, name: true, pct: false, amt: false }
-    }
+  // 单行横排，一路降到 6px
+  for (const fs of [12, 11, 10, 9, 8, 7, 6]) {
+    if (fits(full.length * fs + 4, fs * 1.25)) return one(fs, full)
   }
-  // 又窄又高：竖着写，名字比一个光秃秃的百分数有用
-  for (const fs of [11, 10, 9, 8, 7]) {
-    if (t.w >= fs + 2 && t.h >= cw * fs + 3) {
-      return { fs, pctFs: 0, amtFs: 0, name: true, pct: false, amt: false, vertical: true }
-    }
+  // 又窄又高：竖着写
+  for (const fs of [11, 10, 9, 8, 7, 6]) {
+    if (fits(fs + 2, full.length * fs + 3)) return one(fs, full, true)
   }
-  // 最后退到只写涨跌幅
-  for (const fs of [13, 12, 11, 10, 9, 8]) {
-    if (t.w >= numW(pctTxt, fs) + 4 && t.h >= fs * 1.3) {
+  // 还放不下就砍成两个字，名字比一个光秃秃的百分数有用
+  const abbr = full.slice(0, 2)
+  for (const fs of [9, 8, 7, 6]) {
+    if (fits(abbr.length * fs + 3, fs * 1.25)) return one(fs, abbr)
+  }
+  for (const fs of [9, 8, 7, 6]) {
+    if (fits(fs + 2, abbr.length * fs + 2)) return one(fs, abbr, true)
+  }
+  // 最后一档：只写涨跌幅
+  for (const fs of [13, 12, 11, 10, 9, 8, 7]) {
+    if (fits(numW(pctTxt, fs) + 4, fs * 1.25)) {
       return { fs: 0, pctFs: fs, amtFs: 0, name: false, pct: true, amt: false }
     }
   }
